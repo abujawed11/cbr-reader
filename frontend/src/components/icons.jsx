@@ -122,6 +122,18 @@ export const KeyboardIcon = (p) => (
     <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />
   </Icon>
 )
+export const EyeIcon = (p) => (
+  <Icon {...p}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+)
+export const EyeOffIcon = (p) => (
+  <Icon {...p}>
+    <path d="M2 12s3.5-7 10-7c1.9 0 3.5.5 4.9 1.2M22 12s-3.5 7-10 7c-1.9 0-3.5-.5-4.9-1.2" />
+    <path d="M6.5 6.5 3 3M17.5 17.5 21 21M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+  </Icon>
+)
 export const FileIcon = (p) => (
   <Icon {...p}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
