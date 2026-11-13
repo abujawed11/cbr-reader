@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 const config = require('../config');
 const { db } = require('../db');
 const { convertToBook } = require('../converter');
@@ -78,18 +79,41 @@ router.get('/:id/cover', async (req, res) => {
   res.sendFile(file, (err) => err && !res.headersSent && res.status(404).end());
 });
 
-// Paywalled page access: only pages the user is allowed to read are ever served.
-router.get('/:id/pages/:n', async (req, res) => {
+// Shared paywall gate for page + thumbnail routes. Sends the error response and returns null if denied.
+async function authorizePage(req, res) {
   const n = parseInt(req.params.n, 10);
   const book = await getBook(req.params.id);
   if (!book || book.status !== 'ready' || !(n >= 1 && n <= book.page_count)) {
-    return res.status(404).json({ error: 'Page not found' });
+    res.status(404).json({ error: 'Page not found' });
+    return null;
   }
   if (!(await canReadPage(book, n, null))) {
-    return res.status(403).json({ error: 'Purchase required to read this page' });
+    res.status(403).json({ error: 'Purchase required to read this page' });
+    return null;
+  }
+  return { book, n };
+}
+
+// Paywalled page access: only pages the user is allowed to read are ever served.
+router.get('/:id/pages/:n', async (req, res) => {
+  const ok = await authorizePage(req, res);
+  if (!ok) return;
+  res.set('Cache-Control', 'private, max-age=3600');
+  res.sendFile(path.join(config.storageDir, 'books', String(ok.book.id), `${ok.n}.webp`));
+});
+
+// Small thumbnail, generated on first request and cached on disk. Same paywall rule as full pages.
+router.get('/:id/pages/:n/thumb', async (req, res) => {
+  const ok = await authorizePage(req, res);
+  if (!ok) return;
+  const dir = path.join(config.storageDir, 'books', String(ok.book.id));
+  const thumb = path.join(dir, 'thumbs', `${ok.n}.webp`);
+  if (!fs.existsSync(thumb)) {
+    fs.mkdirSync(path.dirname(thumb), { recursive: true });
+    await sharp(path.join(dir, `${ok.n}.webp`)).resize({ width: 240 }).webp({ quality: 70 }).toFile(thumb);
   }
   res.set('Cache-Control', 'private, max-age=3600');
-  res.sendFile(path.join(config.storageDir, 'books', String(book.id), `${n}.webp`));
+  res.sendFile(thumb);
 });
 
 router.delete('/:id', async (req, res) => {

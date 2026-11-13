@@ -1,39 +1,75 @@
 import { Link } from 'react-router-dom'
+import { BookIcon, LockIcon, TrashIcon } from './icons'
 
-const price = (cents) => (cents === 0 ? 'Free' : `$${(cents / 100).toFixed(2)}`)
+const formatPrice = (cents) => `$${(cents / 100).toFixed(2)}`
 
 export default function BookCard({ book, onDelete }) {
   const ready = book.status === 'ready'
+  const free = book.priceCents === 0
 
   const cover = book.coverUrl ? (
-    <img src={book.coverUrl} alt={book.title} loading="lazy" className="h-full w-full object-cover" />
+    <img
+      src={book.coverUrl}
+      alt={book.title}
+      loading="lazy"
+      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+    />
   ) : (
-    <div className="flex h-full items-center justify-center p-4 text-center text-sm text-slate-500">
-      {book.status === 'processing' && 'Converting…'}
-      {book.status === 'failed' && <span className="text-red-600">Failed: {book.error}</span>}
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-slate-400">
+      {book.status === 'processing' && (
+        <>
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-ink-600 border-t-accent-400" />
+          <span>Converting pages…</span>
+        </>
+      )}
+      {book.status === 'failed' && (
+        <>
+          <BookIcon className="h-7 w-7 text-red-400" />
+          <span className="text-red-300">Conversion failed</span>
+          <span className="line-clamp-3 text-xs text-slate-500">{book.error}</span>
+        </>
+      )}
+    </div>
+  )
+
+  const coverBox = (
+    <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-ink-800 shadow-lg shadow-black/40 ring-1 ring-white/5 transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-accent-600/10 group-hover:ring-accent-500/40">
+      {cover}
+      <span
+        className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold backdrop-blur ${
+          free ? 'bg-emerald-500/90 text-emerald-950' : 'bg-black/70 text-amber-300'
+        }`}
+      >
+        {!free && <LockIcon className="h-3 w-3" />}
+        {free ? 'Free' : formatPrice(book.priceCents)}
+      </span>
+      {ready && (
+        <div className="absolute inset-x-0 bottom-0 flex translate-y-2 items-end justify-center bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-10 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+          <span className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-ink-950">
+            {free ? 'Read now' : `Read ${book.freePages}-page preview`}
+          </span>
+        </div>
+      )}
     </div>
   )
 
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {ready ? (
-        <Link to={`/read/${book.id}`} className="block">
-          <div className="aspect-[2/3] bg-slate-100">{cover}</div>
-        </Link>
-      ) : (
-        <div className="aspect-[2/3] bg-slate-100">{cover}</div>
-      )}
+    <article className="group relative flex flex-col gap-3">
+      {ready ? <Link to={`/read/${book.id}`}>{coverBox}</Link> : coverBox}
       <button
         onClick={() => onDelete(book)}
-        title="Delete"
-        className="absolute right-2 top-2 hidden rounded-full bg-black/60 px-2 py-0.5 text-xs text-white group-hover:block"
+        title="Delete book"
+        aria-label={`Delete ${book.title}`}
+        className="absolute right-2 top-2 hidden rounded-full bg-black/70 p-1.5 text-slate-200 backdrop-blur hover:bg-red-600 hover:text-white group-hover:block"
       >
-        ✕
+        <TrashIcon className="h-4 w-4" />
       </button>
-      <div className="flex flex-1 flex-col gap-1 p-3">
-        <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{book.title}</h3>
-        <p className="text-xs text-slate-500">{ready ? `${book.pageCount} pages` : book.status}</p>
-        <p className="mt-auto text-sm font-medium text-indigo-600">{price(book.priceCents)}</p>
+      <div className="px-0.5">
+        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-slate-100">{book.title}</h3>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {book.author ? `${book.author} · ` : ''}
+          {ready ? `${book.pageCount} pages` : book.status}
+        </p>
       </div>
     </article>
   )
