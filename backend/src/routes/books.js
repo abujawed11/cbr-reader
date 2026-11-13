@@ -20,6 +20,8 @@ const bookView = (b) => ({
   priceCents: b.price_cents,
   freePages: b.free_pages,
   pageCount: b.page_count,
+  // How many pages the current viewer may read (will depend on purchases once auth exists).
+  readablePages: b.price_cents === 0 ? b.page_count : Math.min(b.free_pages, b.page_count),
   status: b.status,
   error: b.error,
   coverUrl: b.status === 'ready' ? `/api/books/${b.id}/cover` : null,

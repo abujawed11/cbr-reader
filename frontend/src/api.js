@@ -9,6 +9,10 @@ async function request(url, options) {
 
 export const listBooks = () => request('/api/books')
 
+export const getBook = (id) => request(`/api/books/${id}`)
+
+export const pageUrl = (bookId, n) => `/api/books/${bookId}/pages/${n}`
+
 export const uploadBook = ({ files, title, price }) => {
   const form = new FormData()
   if (title) form.append('title', title)
