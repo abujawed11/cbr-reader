@@ -16,6 +16,7 @@ import {
   GridIcon,
   KeyboardIcon,
   LockIcon,
+  ScrollIcon,
   SinglePageIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -45,12 +46,19 @@ const store = {
   },
 }
 
-// ---- spread maths: in double-page mode the cover stands alone, then pages pair up (2-3, 4-5, ...) ----
-const spreadStart = (p, double) => (!double || p === 1 ? p : p % 2 === 0 ? p : p - 1)
-const spreadSlots = (start, double, total) =>
-  !double ? [start] : start === 1 ? [1] : [start, start + 1].filter((n) => n <= total)
-const nextStart = (start, double) => (double ? (start === 1 ? 2 : start + 2) : start + 1)
-const prevStart = (start, double) => (double ? (start <= 2 ? 1 : start - 2) : start - 1)
+// ---- spread maths: in double-page mode the cover stands alone, then pages pair up (2-3, 4-5, ...) —
+// except a page that is wider than it is tall (a double-spread scanned as one image), which always stands alone. ----
+function buildSpreads(total, wideSet) {
+  const spreads = []
+  let n = 1
+  while (n <= total) {
+    const alone = n === 1 || n === total || wideSet.has(n) || wideSet.has(n + 1)
+    spreads.push(alone ? [n] : [n, n + 1])
+    n += alone ? 1 : 2
+  }
+  return spreads
+}
+const spreadOf = (spreads, n) => spreads.find((s) => s.includes(n))
 
 function IconButton({ label, active, className = '', children, ...rest }) {
   return (
@@ -193,6 +201,7 @@ const SHORTCUTS = [
   ['Home / End', 'First / last page'],
   ['+ / − / 0', 'Zoom in / out / reset'],
   ['D', 'Toggle single / double page'],
+  ['W', 'Toggle continuous scroll'],
   ['T', 'Page thumbnails'],
   ['F', 'Fullscreen'],
   ['?', 'This help'],
@@ -207,6 +216,7 @@ export default function Reader() {
   const [double, setDouble] = useState(() => store.get('reader-double', false))
   const [fit, setFit] = useState(() => store.get('reader-fit', 'width'))
   const [rtl, setRtl] = useState(() => store.get('reader-rtl', false))
+  const [webtoon, setWebtoon] = useState(() => store.get('reader-webtoon', false))
   const [zoom, setZoom] = useState(1)
   const [uiVisible, setUiVisible] = useState(true)
   const [panel, setPanel] = useState(null) // null | 'thumbs' | 'help'
@@ -217,10 +227,12 @@ export default function Reader() {
   const hideTimer = useRef(null)
   const touch = useRef(null)
   const progressTimer = useRef(null)
+  const pageRefs = useRef(new Map()) // webtoon mode: page number -> its DOM node, for scroll-to and visibility tracking
 
   useEffect(() => store.set('reader-double', double), [double])
   useEffect(() => store.set('reader-fit', fit), [fit])
   useEffect(() => store.set('reader-rtl', rtl), [rtl])
+  useEffect(() => store.set('reader-webtoon', webtoon), [webtoon])
 
   useEffect(() => {
     let cancelled = false
@@ -268,29 +280,51 @@ export default function Reader() {
 
   const total = book?.pageCount ?? 0
   const readable = book?.readablePages ?? 0
-  const start = spreadStart(page, double)
-  const slots = useMemo(() => spreadSlots(start, double, total), [start, double, total])
+  const wideSet = useMemo(() => new Set(book?.widePages ?? []), [book])
+  const spreads = useMemo(() => (double && total ? buildSpreads(total, wideSet) : null), [double, total, wideSet])
+  // Normalizes any page number to the first page of the spread it belongs to (identity outside double-page mode).
+  const normalizeStart = useCallback((n) => (spreads ? (spreadOf(spreads, n)?.[0] ?? n) : n), [spreads])
+
+  const start = normalizeStart(page)
+  const slots = useMemo(() => (spreads ? (spreadOf(spreads, start) ?? [start]) : [start]), [spreads, start])
   const fullyLocked = book ? slots[0] > readable : false
   const atFirst = start <= 1
   const atLast = slots[slots.length - 1] >= total
 
+  // Persists where the reader is, without touching scroll position (used by goTo and by the webtoon visibility tracker).
+  const reportProgress = useCallback(
+    (n) => {
+      store.set(`reader-progress-${id}`, n)
+      if (user) {
+        clearTimeout(progressTimer.current)
+        progressTimer.current = setTimeout(() => saveProgress(id, n).catch(() => {}), 1000)
+      }
+    },
+    [id, user]
+  )
+  useEffect(() => () => clearTimeout(progressTimer.current), [])
+
   const goTo = useCallback(
     (n) => {
       if (!total) return
-      const next = spreadStart(Math.min(Math.max(n, 1), total), double)
+      const next = normalizeStart(Math.min(Math.max(n, 1), total))
       setPage(next)
-      store.set(`reader-progress-${id}`, next)
-      if (user) {
-        clearTimeout(progressTimer.current)
-        progressTimer.current = setTimeout(() => saveProgress(id, next).catch(() => {}), 1000)
-      }
-      scrollRef.current?.scrollTo({ top: 0, left: 0 })
+      reportProgress(next)
+      if (webtoon) pageRefs.current.get(next)?.scrollIntoView({ block: 'start' })
+      else scrollRef.current?.scrollTo({ top: 0, left: 0 })
     },
-    [id, total, double, user]
+    [total, webtoon, reportProgress, normalizeStart]
   )
-  useEffect(() => () => clearTimeout(progressTimer.current), [])
-  const forward = useCallback(() => !atLast && goTo(nextStart(start, double)), [atLast, goTo, start, double])
-  const back = useCallback(() => !atFirst && goTo(prevStart(start, double)), [atFirst, goTo, start, double])
+  const forward = useCallback(() => {
+    if (atLast) return
+    const idx = spreads ? spreads.findIndex((s) => s.includes(start)) : -1
+    goTo(spreads ? (spreads[idx + 1]?.[0] ?? start) : start + 1)
+  }, [atLast, goTo, spreads, start])
+  const back = useCallback(() => {
+    if (atFirst) return
+    const idx = spreads ? spreads.findIndex((s) => s.includes(start)) : -1
+    goTo(spreads ? (spreads[idx - 1]?.[0] ?? start) : start - 1)
+  }, [atFirst, goTo, spreads, start])
   const left = rtl ? forward : back
   const right = rtl ? back : forward
 
@@ -298,8 +332,33 @@ export default function Reader() {
   const toggleDouble = useCallback(() => {
     const next = !double
     setDouble(next)
-    setPage((p) => spreadStart(p, next))
-  }, [double])
+    setPage((p) => (next && total ? (spreadOf(buildSpreads(total, wideSet), p)?.[0] ?? p) : p))
+  }, [double, total, wideSet])
+
+  // Webtoon and double-page spreads don't mix; turning one on turns the other off.
+  const toggleWebtoon = useCallback(() => {
+    setWebtoon((w) => !w)
+    setDouble(false)
+  }, [])
+
+  // While scrolling continuously, track whichever page is most visible so the slider/progress follow along.
+  useEffect(() => {
+    if (!webtoon || !book) return
+    const root = scrollRef.current
+    if (!root) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const best = entries.filter((e) => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (!best) return
+        const n = Number(best.target.dataset.page)
+        setPage(n)
+        reportProgress(n)
+      },
+      { root, threshold: [0.5] }
+    )
+    pageRefs.current.forEach((node) => observer.observe(node))
+    return () => observer.disconnect()
+  }, [webtoon, book, readable, reportProgress])
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen()
@@ -323,21 +382,26 @@ export default function Reader() {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return
       poke()
+      // Page-turning keys don't apply to a continuous scroll; let the browser's own scrolling handle them instead.
+      if (!webtoon) {
+        switch (e.key) {
+          case 'ArrowLeft':
+            return left()
+          case 'ArrowRight':
+            return right()
+          case ' ':
+          case 'PageDown':
+            e.preventDefault()
+            return forward()
+          case 'PageUp':
+            return back()
+          case 'Home':
+            return goTo(1)
+          case 'End':
+            return goTo(total)
+        }
+      }
       switch (e.key) {
-        case 'ArrowLeft':
-          return left()
-        case 'ArrowRight':
-          return right()
-        case ' ':
-        case 'PageDown':
-          e.preventDefault()
-          return forward()
-        case 'PageUp':
-          return back()
-        case 'Home':
-          return goTo(1)
-        case 'End':
-          return goTo(total)
         case '+':
         case '=':
           return zoomBy(ZOOM_STEP)
@@ -346,7 +410,9 @@ export default function Reader() {
         case '0':
           return setZoom(1)
         case 'd':
-          return toggleDouble()
+          return !webtoon && toggleDouble()
+        case 'w':
+          return toggleWebtoon()
         case 't':
           return setPanel((p) => (p === 'thumbs' ? null : 'thumbs'))
         case 'f':
@@ -359,7 +425,7 @@ export default function Reader() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [left, right, forward, back, goTo, total, zoomBy, toggleDouble, toggleFullscreen, poke])
+  }, [webtoon, left, right, forward, back, goTo, total, zoomBy, toggleDouble, toggleWebtoon, toggleFullscreen, poke])
 
   // Warm the cache with the next couple of readable pages.
   useEffect(() => {
@@ -370,18 +436,37 @@ export default function Reader() {
 
   const onViewerClick = (e) => {
     if (fullyLocked || e.target.closest('button, a')) return
+    // Continuous scroll has no left/right pages to tap toward; any tap just shows/hides the chrome.
+    if (webtoon) return setUiVisible((v) => !v)
     const rect = e.currentTarget.getBoundingClientRect()
     const x = (e.clientX - rect.left) / rect.width
     if (x < 0.25) left()
     else if (x > 0.75) right()
     else setUiVisible((v) => !v)
   }
+  const pinch = useRef(null) // { startDist, startZoom } while two fingers are down
+  const pinchDist = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
+
   const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      touch.current = null
+      pinch.current = { startDist: pinchDist(e.touches), startZoom: zoom }
+      return
+    }
+    pinch.current = null
     const t = e.touches[0]
     touch.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null
   }
+  const onTouchMove = (e) => {
+    if (!pinch.current || e.touches.length !== 2) return
+    e.preventDefault()
+    const scale = pinchDist(e.touches) / pinch.current.startDist
+    setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(pinch.current.startZoom * scale).toFixed(2))))
+  }
   const onTouchEnd = (e) => {
-    if (!touch.current || zoom > 1) return
+    if (e.touches.length < 2) pinch.current = null
+    // A vertical scroll swipe isn't a page-turn gesture.
+    if (webtoon || !touch.current || zoom > 1) return
     const t = e.changedTouches[0]
     const dx = t.clientX - touch.current.x
     const dy = t.clientY - touch.current.y
@@ -437,36 +522,73 @@ export default function Reader() {
         className="h-full overflow-auto"
         onClick={onViewerClick}
         onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <div className="flex min-h-screen w-max min-w-full items-center justify-center">
-          {fullyLocked ? (
-            <LockedTile
-              n={slots[0]}
-              readable={readable}
-              total={total}
-              price={price}
-              fullScreen
-              signedIn={!!user}
-              returnTo={`/read/${book.id}`}
-              buying={buying}
-              onBuy={buy}
-              onBackToPreview={() => goTo(readable)}
-            />
-          ) : (
-            visualSlots.map((n) =>
-              n > readable ? (
-                <LockedTile key={n} n={n} readable={readable} total={total} price={price} />
-              ) : (
-                <PageImage key={`${book.id}-${n}`} bookId={book.id} n={n} fit={fit} zoom={zoom} slots={slots.length} />
+        {webtoon ? (
+          <div className="mx-auto flex max-w-3xl flex-col items-center gap-1 py-4">
+            {Array.from({ length: readable }, (_, i) => i + 1).map((n) => (
+              <div
+                key={n}
+                ref={(el) => (el ? pageRefs.current.set(n, el) : pageRefs.current.delete(n))}
+                data-page={n}
+                style={{ width: `${zoom * 100}%` }}
+                className="shrink-0"
+              >
+                <img
+                  src={pageUrl(book.id, n)}
+                  alt={`Page ${n}`}
+                  loading="lazy"
+                  draggable={false}
+                  className="block w-full select-none"
+                />
+              </div>
+            ))}
+            {readable < total && (
+              <LockedTile
+                n={readable + 1}
+                readable={readable}
+                total={total}
+                price={price}
+                fullScreen
+                signedIn={!!user}
+                returnTo={`/read/${book.id}`}
+                buying={buying}
+                onBuy={buy}
+                onBackToPreview={() => goTo(readable)}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="flex min-h-screen w-max min-w-full items-center justify-center">
+            {fullyLocked ? (
+              <LockedTile
+                n={slots[0]}
+                readable={readable}
+                total={total}
+                price={price}
+                fullScreen
+                signedIn={!!user}
+                returnTo={`/read/${book.id}`}
+                buying={buying}
+                onBuy={buy}
+                onBackToPreview={() => goTo(readable)}
+              />
+            ) : (
+              visualSlots.map((n) =>
+                n > readable ? (
+                  <LockedTile key={n} n={n} readable={readable} total={total} price={price} />
+                ) : (
+                  <PageImage key={`${book.id}-${n}`} bookId={book.id} n={n} fit={fit} zoom={zoom} slots={slots.length} />
+                )
               )
-            )
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Edge arrows (desktop hint) */}
-      {!fullyLocked && (
+      {!fullyLocked && !webtoon && (
         <>
           <button
             onClick={left}
@@ -505,12 +627,19 @@ export default function Reader() {
         <IconButton label="Pages (T)" active={panel === 'thumbs'} onClick={() => setPanel((p) => (p === 'thumbs' ? null : 'thumbs'))}>
           <GridIcon />
         </IconButton>
-        <IconButton label={double ? 'Single page (D)' : 'Double page (D)'} active={double} onClick={toggleDouble} className="hidden sm:block">
-          {double ? <DoublePageIcon /> : <SinglePageIcon />}
+        {!webtoon && (
+          <IconButton label={double ? 'Single page (D)' : 'Double page (D)'} active={double} onClick={toggleDouble} className="hidden sm:block">
+            {double ? <DoublePageIcon /> : <SinglePageIcon />}
+          </IconButton>
+        )}
+        <IconButton label={webtoon ? 'Paged view (W)' : 'Continuous scroll (W)'} active={webtoon} onClick={toggleWebtoon}>
+          <ScrollIcon />
         </IconButton>
-        <IconButton label={fit === 'width' ? 'Fit to height' : 'Fit to width'} onClick={() => setFit((f) => (f === 'width' ? 'height' : 'width'))}>
-          {fit === 'width' ? <FitWidthIcon /> : <FitHeightIcon />}
-        </IconButton>
+        {!webtoon && (
+          <IconButton label={fit === 'width' ? 'Fit to height' : 'Fit to width'} onClick={() => setFit((f) => (f === 'width' ? 'height' : 'width'))}>
+            {fit === 'width' ? <FitWidthIcon /> : <FitHeightIcon />}
+          </IconButton>
+        )}
         <IconButton label="Zoom out (−)" onClick={() => zoomBy(-ZOOM_STEP)} disabled={zoom <= ZOOM_MIN} className="hidden sm:block">
           <ZoomOutIcon />
         </IconButton>
@@ -524,9 +653,11 @@ export default function Reader() {
         <IconButton label="Zoom in (+)" onClick={() => zoomBy(ZOOM_STEP)} disabled={zoom >= ZOOM_MAX} className="hidden sm:block">
           <ZoomInIcon />
         </IconButton>
-        <IconButton label={rtl ? 'Right-to-left (manga)' : 'Left-to-right'} active={rtl} onClick={() => setRtl((v) => !v)}>
-          <DirectionIcon />
-        </IconButton>
+        {!webtoon && (
+          <IconButton label={rtl ? 'Right-to-left (manga)' : 'Left-to-right'} active={rtl} onClick={() => setRtl((v) => !v)}>
+            <DirectionIcon />
+          </IconButton>
+        )}
         <IconButton label="Fullscreen (F)" onClick={toggleFullscreen}>
           <ExpandIcon />
         </IconButton>

@@ -116,6 +116,13 @@ export const DirectionIcon = (p) => (
     <path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" />
   </Icon>
 )
+export const ScrollIcon = (p) => (
+  <Icon {...p}>
+    <rect x="7" y="3" width="10" height="7" rx="1.5" />
+    <rect x="7" y="13" width="10" height="7" rx="1.5" />
+    <path d="M12 10v4" />
+  </Icon>
+)
 export const KeyboardIcon = (p) => (
   <Icon {...p}>
     <rect x="3" y="6" width="18" height="12" rx="2" />

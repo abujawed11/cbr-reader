@@ -84,7 +84,14 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
 router.get('/:id', async (req, res) => {
   const book = await getBook(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  res.json(bookView(book, await viewerContext(req.user)));
+  const view = bookView(book, await viewerContext(req.user));
+  if (book.status === 'ready') {
+    // Page numbers wider than they are tall (a double-spread scanned as one image): the reader keeps these
+    // standing alone in double-page mode instead of pairing them with a neighbor.
+    const [rows] = await db().query('SELECT number FROM pages WHERE book_id = ? AND width > height', [book.id]);
+    view.widePages = rows.map((r) => r.number);
+  }
+  res.json(view);
 });
 
 router.get('/:id/cover', async (req, res) => {

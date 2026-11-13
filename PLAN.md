@@ -4,7 +4,7 @@ A web app where an admin uploads books (`.cbr`, `.cbz`, `.pdf`, or loose images)
 common page-image format, and readers browse a library and read in the browser. Paid books show a free preview and
 ask the reader to purchase (via Razorpay) to read the rest.
 
-_Last updated: 2026-11-13 (after Phase 5 build)_
+_Last updated: 2026-11-13 (after Phase 6 build, in progress)_
 
 Legend: ✅ built · 🟡 built, being tested or not fully verified · ⬜ not started · ❓ needs a decision from you
 
@@ -20,16 +20,15 @@ Legend: ✅ built · 🟡 built, being tested or not fully verified · ⬜ not s
 | 3 | Accounts and roles | ✅ |
 | 4 | Hardening | ⏭ **skipped for now by choice** (still recommended before launch) |
 | 5 | Payments and purchases (Razorpay) | 🟡 **built, you are testing it through the UI** |
-| 6 | Reader and account features | ⬜ |
+| 6 | Reader and account features | ✅ |
 | 7 | Admin tools | ⬜ |
 | 8 | Catalogue features | ⬜ |
 | 9 | Production deployment | ⬜ |
 | 10 | Legal and launch | ⬜ |
 | 11 | Later ideas | ⬜ |
 
-**Where we are right now:** Phase 5 code is complete and your Razorpay test keys are in place. Two real test orders
-have already been created (so order creation works with your keys). **The next step is you completing a test payment
-in the UI** and telling me what happens.
+**Where we are right now:** Phase 6 is complete. **The next step is you completing a test payment in the UI** (Phase 5's
+last open item), or picking a Phase 7/8 feature, or the starred Phase 4 hardening items — your call.
 
 ---
 
@@ -141,10 +140,27 @@ order, refund re-locks, owned/free/admin cases for order creation.
 - [ ] A real refund from the dashboard re-locking the book
 
 Still to do in Phase 5:
-- [ ] "My library" / order-history page in the UI
+- [x] "My library" page in the UI (Phase 6)
+- [ ] Order-history page in the UI (the `GET /api/payments/mine` endpoint exists; no page reads it yet)
 - [ ] Receipt emails (needs email service, Phase 9)
 - [ ] Decide refund/access policy (currently: full refund removes access; partial refunds are ignored) ❓
 - [ ] Go-live: Razorpay KYC, live keys, live webhook
+
+### Phase 6 — Reader and account features ✅
+- [x] Reading progress stored on the server per user (`reading_progress` table, debounced save while reading; falls
+      back to `localStorage` for guests)
+- [x] "Continue reading" row on the library home (signed-in, in-progress books, most recent first)
+- [x] "My library" page (`/my-library`) listing purchased books
+- [x] Favourites: heart toggle on every cover, `/favorites` page, `favorites` table
+- [x] Account settings page (`/profile`): change email, change password, delete account (password-confirmed; refused
+      if the account has purchase history, since those rows are kept as financial records)
+- [x] Reader polish: pinch-zoom (two-finger touch), continuous scroll / webtoon mode (toggle + `W` shortcut, tracks
+      the most-visible page for the slider/progress)
+- [x] Reader polish: wide pages (landscape double-spreads scanned as one image) now stand alone in double-page mode
+      instead of being paired with a neighbor — `GET /api/books/:id` reports `widePages` from each page's stored
+      width/height, and the reader builds spreads around them
+
+Not yet tried with a real wide page in your own library — worth a quick look next time you read a book that has one.
 
 ---
 
@@ -163,13 +179,6 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - [ ] Session revocation (logout only clears the cookie; a stolen token stays valid until it expires).
 - [ ] Centralised input validation (e.g. `zod`) and a real DB migration tool (currently startup `ALTER TABLE` checks).
 - [ ] Rename `books.price_cents` → `price_minor` (the column now holds paise; the name is historical).
-
-### Phase 6 — Reader and account features ⬜
-- [ ] Reading progress stored on the server per user (currently per browser)
-- [ ] "Continue reading" row; "My library" of purchased books
-- [ ] Bookmarks / favourites / wishlist
-- [ ] Profile page (change email/password, delete account)
-- [ ] Reader polish found in real use: wide pages in double-page mode, continuous scroll (webtoon) mode, pinch-zoom
 
 ### Phase 7 — Admin tools ⬜
 - [ ] Edit a book after upload: title, author, description, price, free-preview pages (currently set once at upload)
@@ -243,6 +252,9 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 | PDF rendering | `pdfjs-dist` + `@napi-rs/canvas` | Permissive licences, no system install; avoids AGPL `mupdf` |
 | Conversion | In-process background task | Simple to start; to be replaced by a queue (Phase 4) |
 | Phase 4 | Skipped for now | Your call; starred items recommended before launch |
+| Account deletion with purchase history | Refused (409), asks the user to contact support | Purchase rows are kept as financial records, same reasoning as the book-deletion snapshot pattern |
+| Reading progress source of truth | Server (signed in) with `localStorage` fallback (guests) | Follows the reader across devices; guests still get something without an account |
+| Favourites vs. bookmarks | Built favourites (book-level) first; per-page bookmarks still planned | Favourites covers the more common "save for later" case with less design surface |
 
 ---
 
@@ -254,7 +266,9 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - **pages** — `id`, `book_id`, `number`, `width`, `height` (images on disk at `storage/books/<id>/<n>.webp`)
 - **purchases** — `id`, `user_id`, `book_id` (nullable), `book_title`, `amount`, `currency`, `razorpay_order_id` (unique),
   `razorpay_payment_id`, `status` (`created`/`paid`/`failed`/`refunded`), `created_at`, `paid_at`
-- _Planned:_ `reading_progress`, `bookmarks`, `categories`/`book_categories`, `audit_log`
+- **reading_progress** — `user_id`, `book_id`, `page`, `updated_at` (one row per reader per book)
+- **favorites** — `user_id`, `book_id`, `created_at`
+- _Planned:_ `bookmarks` (per-page, distinct from favourites), `categories`/`book_categories`, `audit_log`
 
 ## 8. API (current)
 
@@ -262,10 +276,14 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 |---|---|---|
 | POST | `/api/auth/signup`, `/login`, `/logout` | public (rate limited) |
 | GET | `/api/auth/me` | public (`null` if signed out) |
-| GET | `/api/books`, `/api/books/:id`, `/:id/cover` | public (responses depend on who is asking: `purchased`, `readablePages`) |
+| GET | `/api/books`, `/api/books/:id`, `/:id/cover` | public (responses depend on who is asking: `purchased`, `readablePages`, `lastPage`, `favorited`) |
 | GET | `/api/books/:id/pages/:n`, `/:id/pages/:n/thumb` | free pages: public · locked pages: buyers and admins only (else 403) |
 | POST | `/api/books` | admin |
 | DELETE | `/api/books/:id` | admin |
+| PUT | `/api/books/:id/progress` | signed in |
+| PUT`/`DELETE | `/api/books/:id/favorite` | signed in |
+| PUT | `/api/auth/email`, `/api/auth/password` | signed in (rate limited) |
+| DELETE | `/api/auth/me` | signed in, password-confirmed (rate limited; refused if the account has purchase history) |
 | POST | `/api/payments/orders` | signed in |
 | POST | `/api/payments/verify` | signed in (owner of the order) |
 | GET | `/api/payments/mine` | signed in |
@@ -310,6 +328,8 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - Library loads every book at once; fine for small catalogues only (Phase 8).
 - There are leftover `created` purchase rows for abandoned checkouts (normal; they never unlock anything). No cleanup job yet.
 - No order-history page in the UI, no receipts, no admin sales view.
+- Webtoon mode's "most visible page" tracking (for the slider/progress) is approximate (`IntersectionObserver`,
+  50% threshold) — fine in practice, but not pixel-exact.
 - Original uploads are deleted after conversion.
 - No automated tests, no CI, project not in git.
 - Lesson learned: if the backend seems to ignore `.env` changes, check for an old copy still holding port 4000.
@@ -319,6 +339,7 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 
 1. **Finish your test payment** (success, then also try a failed/cancelled one) and send me anything that looks wrong.
 2. Optionally set up the webhook via a tunnel and try a refund from the Razorpay dashboard to see the book re-lock.
-3. **Quick wins:** "My library"/order history page, then the starred Phase 4 items (git, tests, change-password, conversion queue, helmet).
-4. **Phases 6–8** in whatever order matters to your users (server-side progress, admin edit/cover tools, book detail page).
+3. **Quick wins:** order-history page, then the starred Phase 4 items (git, tests, conversion queue, helmet) — change-password
+   is already done.
+4. **Phases 7–8** in whatever order matters to your users (admin edit/cover tools, book detail page).
 5. **Phases 9–10** before showing it to the public: deployment, email, legal pages, Razorpay live-mode KYC.
