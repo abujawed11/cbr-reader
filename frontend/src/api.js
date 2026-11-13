@@ -46,6 +46,8 @@ export const uploadCover = (id, file) => {
   return request(`/api/books/${id}/cover`, { method: 'POST', body: form })
 }
 
+export const setCoverFromPage = (id, n) => request(`/api/books/${id}/cover/page/${n}`, { method: 'PUT' })
+
 export const addFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'PUT' })
 export const removeFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'DELETE' })
 

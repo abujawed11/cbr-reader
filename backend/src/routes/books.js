@@ -145,6 +145,25 @@ router.put('/:id', requireAdmin, async (req, res) => {
   res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
 });
 
+// Set the cover to one of the book's own already-converted pages. Admin only; no upload needed, so it's instant.
+router.put('/:id/cover/page/:n', requireAdmin, async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  const n = parseInt(req.params.n, 10);
+  if (book.status !== 'ready' || !(n >= 1 && n <= book.page_count)) {
+    return res.status(400).json({ error: 'Invalid page number' });
+  }
+
+  const dir = path.join(config.storageDir, 'books', String(book.id));
+  try {
+    // The page file is already rotated/converted; just resize it down to cover size.
+    await sharp(path.join(dir, `${n}.webp`)).resize({ width: 400, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(dir, 'cover.webp'));
+  } catch {
+    return res.status(400).json({ error: 'Could not use that page as the cover.' });
+  }
+  res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
+});
+
 router.get('/:id/cover', async (req, res) => {
   const file = path.join(config.storageDir, 'books', String(parseInt(req.params.id, 10)), 'cover.webp');
   res.sendFile(file, (err) => err && !res.headersSent && res.status(404).end());

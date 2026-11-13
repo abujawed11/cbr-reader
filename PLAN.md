@@ -188,7 +188,8 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - [x] Replace/upload a custom cover (`POST /api/books/:id/cover`, click the cover thumbnail in the edit modal).
       Processed the same way the converter processes the auto-picked one (resize 400px wide, WebP). The cover URL
       carries a cache-busting `?v=<file mtime>` so a new upload shows up immediately everywhere, not just after a
-      hard refresh.
+      hard refresh. Also: "choose one of this book's pages" (`PUT /api/books/:id/cover/page/:n`) — pick an
+      already-converted page as the cover instead, applied instantly with no upload.
 - [ ] Reorder, delete, or replace individual pages; retry failed conversions
 - [ ] Manage users: list, promote/demote admin, disable accounts
 - [ ] Sales dashboard (revenue, purchases per book); refund from the app
