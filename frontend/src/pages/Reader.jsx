@@ -26,6 +26,7 @@ const ZOOM_MIN = 0.5
 const ZOOM_MAX = 4
 const ZOOM_STEP = 0.25
 const HIDE_UI_AFTER_MS = 3000
+const PAN_STEP = 120 // px scrolled per arrow-key press while zoomed in
 
 // ---- persisted preferences (best effort: storage may be unavailable) ----
 const store = {
@@ -197,6 +198,7 @@ function Thumbnails({ book, current, slots, readable, onSelect, onClose }) {
 
 const SHORTCUTS = [
   ['← / →', 'Previous / next page'],
+  ['↑ / ↓ / ← / →', 'Pan around the page when zoomed in'],
   ['Space, PageDown', 'Next page'],
   ['Home / End', 'First / last page'],
   ['+ / − / 0', 'Zoom in / out / reset'],
@@ -384,6 +386,23 @@ export default function Reader() {
       poke()
       // Page-turning keys don't apply to a continuous scroll; let the browser's own scrolling handle them instead.
       if (!webtoon) {
+        // Zoomed in: arrow keys pan around the enlarged page instead of turning it.
+        if (zoom > 1) {
+          switch (e.key) {
+            case 'ArrowLeft':
+              e.preventDefault()
+              return scrollRef.current?.scrollBy({ left: -PAN_STEP })
+            case 'ArrowRight':
+              e.preventDefault()
+              return scrollRef.current?.scrollBy({ left: PAN_STEP })
+            case 'ArrowUp':
+              e.preventDefault()
+              return scrollRef.current?.scrollBy({ top: -PAN_STEP })
+            case 'ArrowDown':
+              e.preventDefault()
+              return scrollRef.current?.scrollBy({ top: PAN_STEP })
+          }
+        }
         switch (e.key) {
           case 'ArrowLeft':
             return left()
@@ -425,7 +444,7 @@ export default function Reader() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [webtoon, left, right, forward, back, goTo, total, zoomBy, toggleDouble, toggleWebtoon, toggleFullscreen, poke])
+  }, [webtoon, zoom, left, right, forward, back, goTo, total, zoomBy, toggleDouble, toggleWebtoon, toggleFullscreen, poke])
 
   // Warm the cache with the next couple of readable pages.
   useEffect(() => {
