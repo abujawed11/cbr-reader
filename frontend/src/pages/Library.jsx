@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { deleteBook, listBooks } from '../api'
+import { deleteBook, listBooks, retryBook } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
 import ContinueReadingRow from '../components/ContinueReadingRow'
 import EditBookModal from '../components/EditBookModal'
+import ManagePagesModal from '../components/ManagePagesModal'
 import UploadModal from '../components/UploadModal'
 import UserMenu from '../components/UserMenu'
 import { BookIcon, PlusIcon, SearchIcon, UploadIcon } from '../components/icons'
@@ -25,6 +26,8 @@ export default function Library() {
   const [filter, setFilter] = useState('all')
   const [modalFiles, setModalFiles] = useState(null) // null = closed, array = open (maybe prefilled)
   const [editingBook, setEditingBook] = useState(null) // null = closed, else the book being edited
+  const [managingPagesBook, setManagingPagesBook] = useState(null) // null = closed, else the book being managed
+  const [retryingId, setRetryingId] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
 
@@ -97,6 +100,20 @@ export default function Library() {
 
   const handleBookSaved = (updated) => {
     setBooks((prev) => (prev ?? []).map((b) => (b.id === updated.id ? updated : b)))
+    // Keep an already-open modal in sync too (e.g. page count changing while managing pages).
+    setManagingPagesBook((b) => (b?.id === updated.id ? updated : b))
+    setEditingBook((b) => (b?.id === updated.id ? updated : b))
+  }
+
+  const handleRetry = async (book) => {
+    setRetryingId(book.id)
+    try {
+      handleBookSaved(await retryBook(book.id))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRetryingId(null)
+    }
   }
 
   const continueReading = useMemo(() => {
@@ -226,7 +243,15 @@ export default function Library() {
         ) : (
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {visible.map((book) => (
-              <BookCard key={book.id} book={book} onDelete={isAdmin ? handleDelete : undefined} onEdit={isAdmin ? setEditingBook : undefined} />
+              <BookCard
+                key={book.id}
+                book={book}
+                onDelete={isAdmin ? handleDelete : undefined}
+                onEdit={isAdmin ? setEditingBook : undefined}
+                onManagePages={isAdmin ? setManagingPagesBook : undefined}
+                onRetry={isAdmin ? handleRetry : undefined}
+                retrying={retryingId === book.id}
+              />
             ))}
           </div>
         )}
@@ -242,6 +267,10 @@ export default function Library() {
       )}
 
       {editingBook && <EditBookModal book={editingBook} onClose={() => setEditingBook(null)} onSaved={handleBookSaved} />}
+
+      {managingPagesBook && (
+        <ManagePagesModal book={managingPagesBook} onClose={() => setManagingPagesBook(null)} onSaved={handleBookSaved} />
+      )}
 
       {dragOver && !modalFiles && (
         <div className="animate-fade-in pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/80 backdrop-blur-sm">

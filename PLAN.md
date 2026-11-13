@@ -189,8 +189,15 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
       Processed the same way the converter processes the auto-picked one (resize 400px wide, WebP). The cover URL
       carries a cache-busting `?v=<file mtime>` so a new upload shows up immediately everywhere, not just after a
       hard refresh. Also: "choose one of this book's pages" (`PUT /api/books/:id/cover/page/:n`) — pick an
-      already-converted page as the cover instead, applied instantly with no upload.
-- [ ] Reorder, delete, or replace individual pages; retry failed conversions
+      already-converted page as the cover instead. Both cover actions stage locally in the modal and only take
+      effect when you click Save (Cancel discards them, matching every other field in the form).
+- [x] Reorder, delete, or replace individual pages; retry failed conversions. "Manage pages" panel (grid icon on
+      each ready cover): move-left/right arrows stage a new order (applied on Save; Cancel discards it, same
+      pattern as the cover picker), delete renumbers everything after it so page numbers stay contiguous, replace
+      swaps one page's image in place. **Design change to support retry:** a failed conversion's original upload(s)
+      are now kept on disk (`pending_conversions` table) instead of being deleted immediately — "Retry" (button on
+      the failed-book tile) re-runs the same conversion with them; they're cleaned up on success, on retry success,
+      or when the book is deleted.
 - [ ] Manage users: list, promote/demote admin, disable accounts
 - [ ] Sales dashboard (revenue, purchases per book); refund from the app
 - [ ] Draft / published state
@@ -337,7 +344,11 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - No order-history page in the UI, no receipts, no admin sales view.
 - Webtoon mode's "most visible page" tracking (for the slider/progress) is approximate (`IntersectionObserver`,
   50% threshold) — fine in practice, but not pixel-exact.
-- Original uploads are deleted after conversion.
+- Original uploads are deleted after a successful conversion. A **failed** one keeps its originals on disk (for
+  Retry) until the book is retried successfully or deleted — a failed book left sitting around indefinitely holds
+  onto that disk space.
+- Page reorder/delete/replace have no transactions (consistent with the rest of the codebase); a crash mid-operation
+  could in theory leave files and DB rows briefly out of step. Unlikely in practice, not handled specially.
 - No automated tests, no CI, project not in git.
 - Lesson learned: if the backend seems to ignore `.env` changes, check for an old copy still holding port 4000.
   (The server now exits with a clear message if the port is taken; before it printed a false "listening".)

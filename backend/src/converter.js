@@ -102,7 +102,8 @@ async function convertToBook(bookId, uploads) {
     throw err;
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
-    await Promise.all(uploads.map((u) => fs.rm(u.path, { force: true })));
+    // Deliberately NOT deleting `uploads` here: the caller does that, and only once it knows the outcome —
+    // a failed conversion keeps its original files around so "retry" has something to retry with.
   }
 }
 

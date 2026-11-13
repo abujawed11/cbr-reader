@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addFavorite, removeFavorite } from '../api'
 import { useAuth } from '../auth/AuthContext'
-import { BookIcon, EditIcon, HeartIcon, LockIcon, TrashIcon } from './icons'
+import { BookIcon, EditIcon, GridIcon, HeartIcon, LockIcon, TrashIcon } from './icons'
 
 import { formatPrice } from '../lib/format'
 
-export default function BookCard({ book, onDelete, onEdit, onFavoriteChange }) {
+export default function BookCard({ book, onDelete, onEdit, onManagePages, onRetry, retrying, onFavoriteChange }) {
   const { user } = useAuth()
   const ready = book.status === 'ready'
   const free = book.priceCents === 0
@@ -53,6 +53,18 @@ export default function BookCard({ book, onDelete, onEdit, onFavoriteChange }) {
           <BookIcon className="h-7 w-7 text-red-400" />
           <span className="text-red-300">Conversion failed</span>
           <span className="line-clamp-3 text-xs text-slate-500">{book.error}</span>
+          {onRetry && (
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                onRetry(book)
+              }}
+              disabled={retrying}
+              className="mt-1 rounded-full bg-accent-600 px-3 py-1 text-xs font-semibold text-white hover:bg-accent-500 disabled:opacity-60"
+            >
+              {retrying ? 'Retrying…' : 'Retry'}
+            </button>
+          )}
         </>
       )}
     </div>
@@ -86,6 +98,16 @@ export default function BookCard({ book, onDelete, onEdit, onFavoriteChange }) {
   return (
     <article className="group relative flex flex-col gap-3">
       {ready ? <Link to={`/read/${book.id}`}>{coverBox}</Link> : coverBox}
+      {ready && onManagePages && (
+        <button
+          onClick={() => onManagePages(book)}
+          title="Manage pages"
+          aria-label={`Manage pages for ${book.title}`}
+          className="absolute right-20 top-2 hidden rounded-full bg-black/70 p-1.5 text-slate-200 backdrop-blur hover:bg-accent-600 hover:text-white group-hover:block"
+        >
+          <GridIcon className="h-4 w-4" />
+        </button>
+      )}
       {onEdit && (
         <button
           onClick={() => onEdit(book)}

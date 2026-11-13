@@ -48,6 +48,18 @@ export const uploadCover = (id, file) => {
 
 export const setCoverFromPage = (id, n) => request(`/api/books/${id}/cover/page/${n}`, { method: 'PUT' })
 
+export const retryBook = (id) => request(`/api/books/${id}/retry`, { method: 'POST' })
+
+export const deletePage = (id, n) => request(`/api/books/${id}/pages/${n}`, { method: 'DELETE' })
+
+export const reorderPages = (id, order) => jsonPut(`/api/books/${id}/pages/reorder`, { order })
+
+export const replacePage = (id, n, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return request(`/api/books/${id}/pages/${n}/replace`, { method: 'PUT', body: form })
+}
+
 export const addFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'PUT' })
 export const removeFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'DELETE' })
 

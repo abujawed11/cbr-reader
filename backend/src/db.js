@@ -93,12 +93,22 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS pages (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       book_id INT UNSIGNED NOT NULL,
-      number INT UNSIGNED NOT NULL,
+      number INT NOT NULL,
       width INT UNSIGNED NULL,
       height INT UNSIGNED NULL,
       UNIQUE KEY uq_book_page (book_id, number),
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
     )`);
+
+  // Migration: `number` needs to go negative, however briefly, while reordering pages (it frees up a slot
+  // without colliding with the unique (book_id, number) key); it started out UNSIGNED, which can't do that.
+  const [numberCol] = await pool.query(
+    "SELECT COLUMN_TYPE FROM information_schema.columns WHERE table_schema = ? AND table_name = 'pages' AND column_name = 'number'",
+    [database]
+  );
+  if (numberCol.length && /unsigned/i.test(numberCol[0].COLUMN_TYPE)) {
+    await pool.query('ALTER TABLE pages MODIFY number INT NOT NULL');
+  }
 
   // One row per (user, book): where this reader last was. Replaces the old browser-only localStorage progress.
   await pool.query(`
@@ -119,6 +129,16 @@ async function initDb() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, book_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )`);
+
+  // The original upload(s) for a book that failed conversion, kept on disk (not deleted like a successful
+  // upload's) so "retry" has something to retry with. One row per book; cleared on success, retry, or delete.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pending_conversions (
+      book_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      files JSON NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
     )`);
 }
