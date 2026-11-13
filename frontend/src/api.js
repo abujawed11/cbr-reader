@@ -31,6 +31,13 @@ export const thumbUrl = (bookId, n) => `/api/books/${bookId}/pages/${n}/thumb`
 
 export const deleteBook = (id) => request(`/api/books/${id}`, { method: 'DELETE' })
 
+export const saveProgress = (bookId, page) =>
+  request(`/api/books/${bookId}/progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page }),
+  })
+
 // Uses XMLHttpRequest (not fetch) because fetch can't report upload progress.
 // Returns { promise, abort }.
 export function uploadBook({ files, title, author, price, freePages }, onProgress) {

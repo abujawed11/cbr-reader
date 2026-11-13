@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { deleteBook, listBooks } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
+import ContinueReadingRow from '../components/ContinueReadingRow'
 import UploadModal from '../components/UploadModal'
 import UserMenu from '../components/UserMenu'
 import { BookIcon, PlusIcon, SearchIcon, UploadIcon } from '../components/icons'
@@ -92,6 +93,14 @@ export default function Library() {
     }
   }
 
+  const continueReading = useMemo(() => {
+    if (!user) return []
+    return (books ?? [])
+      .filter((b) => b.status === 'ready' && b.lastPage && b.lastPage < b.pageCount)
+      .sort((a, b) => new Date(b.lastReadAt) - new Date(a.lastReadAt))
+      .slice(0, 10)
+  }, [books, user])
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return (books ?? []).filter((b) => {
@@ -147,6 +156,8 @@ export default function Library() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <ContinueReadingRow books={continueReading} />
+
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-white">Library</h1>

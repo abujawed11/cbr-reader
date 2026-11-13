@@ -99,6 +99,18 @@ async function initDb() {
       UNIQUE KEY uq_book_page (book_id, number),
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
     )`);
+
+  // One row per (user, book): where this reader last was. Replaces the old browser-only localStorage progress.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reading_progress (
+      user_id INT UNSIGNED NOT NULL,
+      book_id INT UNSIGNED NOT NULL,
+      page INT UNSIGNED NOT NULL DEFAULT 1,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, book_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )`);
 }
 
 const db = () => pool;

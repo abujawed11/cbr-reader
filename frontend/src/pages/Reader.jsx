@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getBook, pageUrl, thumbUrl } from '../api'
+import { getBook, pageUrl, saveProgress, thumbUrl } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import { formatPrice } from '../lib/format'
 import { payForBook } from '../lib/razorpay'
@@ -216,6 +216,7 @@ export default function Reader() {
   const rootRef = useRef(null)
   const hideTimer = useRef(null)
   const touch = useRef(null)
+  const progressTimer = useRef(null)
 
   useEffect(() => store.set('reader-double', double), [double])
   useEffect(() => store.set('reader-fit', fit), [fit])
@@ -228,7 +229,9 @@ export default function Reader() {
         if (cancelled) return
         if (b.status !== 'ready') return setError('This book is still being prepared. Try again in a moment.')
         setBook(b)
-        setPage(Math.min(Math.max(store.get(`reader-progress-${id}`, 1), 1), b.pageCount))
+        // Signed-in readers resume from the server (follows them across devices); guests fall back to this browser's copy.
+        const saved = b.lastPage ?? store.get(`reader-progress-${id}`, 1)
+        setPage(Math.min(Math.max(saved, 1), b.pageCount))
       })
       .catch((err) => !cancelled && setError(err.message))
     return () => {
@@ -277,10 +280,15 @@ export default function Reader() {
       const next = spreadStart(Math.min(Math.max(n, 1), total), double)
       setPage(next)
       store.set(`reader-progress-${id}`, next)
+      if (user) {
+        clearTimeout(progressTimer.current)
+        progressTimer.current = setTimeout(() => saveProgress(id, next).catch(() => {}), 1000)
+      }
       scrollRef.current?.scrollTo({ top: 0, left: 0 })
     },
-    [id, total, double]
+    [id, total, double, user]
   )
+  useEffect(() => () => clearTimeout(progressTimer.current), [])
   const forward = useCallback(() => !atLast && goTo(nextStart(start, double)), [atLast, goTo, start, double])
   const back = useCallback(() => !atFirst && goTo(prevStart(start, double)), [atFirst, goTo, start, double])
   const left = rtl ? forward : back

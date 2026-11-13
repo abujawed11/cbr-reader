@@ -7,7 +7,7 @@ const config = require('../config');
 const { db } = require('../db');
 const { convertToBook } = require('../converter');
 const { canReadPage, viewerContext, hasFullAccess } = require('../access');
-const { requireAdmin } = require('../auth');
+const { requireAdmin, requireAuth } = require('../auth');
 
 const router = express.Router();
 const uploadDir = path.join(config.storageDir, 'uploads');
@@ -30,6 +30,9 @@ const bookView = (b, ctx) => ({
   status: b.status,
   error: b.error,
   coverUrl: b.status === 'ready' ? `/api/books/${b.id}/cover` : null,
+  // Where this signed-in viewer last left off reading, and when; null for guests or never-opened books.
+  lastPage: ctx.progress?.get(b.id)?.page ?? null,
+  lastReadAt: ctx.progress?.get(b.id)?.updatedAt ?? null,
 });
 
 async function getBook(id) {
@@ -123,6 +126,19 @@ router.get('/:id/pages/:n/thumb', async (req, res) => {
   }
   res.set('Cache-Control', 'private, max-age=3600');
   res.sendFile(thumb);
+});
+
+// Reading progress: one upsert per (user, book). Clamped server-side; the client just reports where it is.
+router.put('/:id/progress', requireAuth, async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  const page = Math.min(Math.max(parseInt(req.body.page, 10) || 1, 1), Math.max(book.page_count, 1));
+  await db().query(
+    `INSERT INTO reading_progress (user_id, book_id, page) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE page = VALUES(page)`,
+    [req.user.id, book.id, page]
+  );
+  res.status(204).end();
 });
 
 router.delete('/:id', requireAdmin, async (req, res) => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 export default function UserMenu() {
@@ -40,13 +41,21 @@ export default function UserMenu() {
               </span>
             )}
           </div>
+          <Link
+            to="/my-library"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-slate-200 hover:bg-ink-700"
+          >
+            My library
+          </Link>
           <button
             role="menuitem"
             onClick={() => {
               setOpen(false)
               signOut()
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-slate-200 hover:bg-ink-700"
+            className="w-full border-t border-ink-700 px-4 py-2.5 text-left text-sm text-slate-200 hover:bg-ink-700"
           >
             Sign out
           </button>
