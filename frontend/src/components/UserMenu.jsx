@@ -34,6 +34,11 @@ export default function UserMenu() {
           <div className="border-b border-ink-700 px-4 py-3">
             <p className="truncate text-sm font-semibold text-white">{user.username}</p>
             <p className="truncate text-xs text-slate-400">{user.email}</p>
+            {user.role === 'admin' && (
+              <span className="mt-2 inline-block rounded-full bg-accent-500/20 px-2 py-0.5 text-[11px] font-semibold text-accent-400">
+                Admin
+              </span>
+            )}
           </div>
           <button
             role="menuitem"

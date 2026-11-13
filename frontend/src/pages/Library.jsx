@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { deleteBook, listBooks } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
@@ -15,7 +15,8 @@ const FILTERS = [
 
 export default function Library() {
   const { user, loading: authLoading } = useAuth()
-  const navigate = useNavigate()
+  // Only admins can add or delete books. This just hides the controls: the server enforces it.
+  const isAdmin = user?.role === 'admin'
   const [books, setBooks] = useState(null) // null = first load in progress
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -34,11 +35,9 @@ export default function Library() {
     }
   }, [])
 
-  // Reload when the signed-in user changes: ownership flags (delete rights) depend on it.
-  const userId = user?.id
   useEffect(() => {
     refresh()
-  }, [refresh, userId])
+  }, [refresh])
 
   // Poll while any book is still being converted.
   const hasProcessing = books?.some((b) => b.status === 'processing')
@@ -48,16 +47,17 @@ export default function Library() {
     return () => clearInterval(timer)
   }, [hasProcessing, refresh])
 
-  // Drop files anywhere on the page to start an upload.
+  // Admins can drop files anywhere on the page to start an upload. For everyone else a stray drop is
+  // swallowed so the browser doesn't navigate away to the dropped file.
   useEffect(() => {
     const hasFiles = (e) => e.dataTransfer?.types?.includes('Files')
     const enter = (e) => {
-      if (!hasFiles(e)) return
+      if (!hasFiles(e) || !isAdmin) return
       dragDepth.current++
       setDragOver(true)
     }
     const leave = (e) => {
-      if (!hasFiles(e)) return
+      if (!hasFiles(e) || !isAdmin) return
       dragDepth.current = Math.max(0, dragDepth.current - 1)
       if (dragDepth.current === 0) setDragOver(false)
     }
@@ -65,6 +65,7 @@ export default function Library() {
     const drop = (e) => {
       if (!hasFiles(e)) return
       e.preventDefault()
+      if (!isAdmin) return
       dragDepth.current = 0
       setDragOver(false)
       setModalFiles((open) => (open ? open : Array.from(e.dataTransfer.files)))
@@ -79,7 +80,7 @@ export default function Library() {
       window.removeEventListener('dragover', over)
       window.removeEventListener('drop', drop)
     }
-  }, [])
+  }, [isAdmin])
 
   const handleDelete = async (book) => {
     if (!window.confirm(`Delete "${book.title}"? This cannot be undone.`)) return
@@ -100,10 +101,7 @@ export default function Library() {
     })
   }, [books, query, filter])
 
-  const openUpload = () => {
-    if (!user) return navigate('/login', { state: { from: '/' } })
-    setModalFiles([])
-  }
+  const openUpload = () => setModalFiles([])
 
   return (
     <div className="min-h-screen">
@@ -126,13 +124,15 @@ export default function Library() {
             />
           </div>
 
-          <button
-            onClick={openUpload}
-            className="flex shrink-0 items-center gap-2 rounded-full bg-accent-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-accent-600/25 transition hover:bg-accent-500"
-          >
-            <PlusIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Add book</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={openUpload}
+              className="flex shrink-0 items-center gap-2 rounded-full bg-accent-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-accent-600/25 transition hover:bg-accent-500"
+            >
+              <PlusIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Add book</span>
+            </button>
+          )}
 
           {authLoading ? (
             <span className="h-9 w-9 shrink-0" />
@@ -149,7 +149,7 @@ export default function Library() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Your library</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white">Library</h1>
             <p className="text-sm text-slate-400">
               {books === null ? 'Loading…' : `${books.length} ${books.length === 1 ? 'book' : 'books'}`}
             </p>
@@ -191,29 +191,31 @@ export default function Library() {
               <UploadIcon className="h-8 w-8" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-white">Your shelf is empty</h2>
+              <h2 className="text-lg font-semibold text-white">{isAdmin ? 'Your shelf is empty' : 'No books yet'}</h2>
               <p className="mt-1 max-w-sm text-sm text-slate-400">
-                Drop a .cbr, .cbz or .pdf file anywhere on this page, or add your first book to start reading.
+                {isAdmin
+                  ? 'Drop a .cbr, .cbz or .pdf file anywhere on this page, or add your first book.'
+                  : 'The library is empty right now. Check back soon for new books.'}
               </p>
             </div>
-            <button onClick={openUpload} className="rounded-full bg-accent-600 px-5 py-2 text-sm font-semibold text-white hover:bg-accent-500">
-              Add your first book
-            </button>
+            {isAdmin && (
+              <button onClick={openUpload} className="rounded-full bg-accent-600 px-5 py-2 text-sm font-semibold text-white hover:bg-accent-500">
+                Add your first book
+              </button>
+            )}
           </div>
         ) : visible.length === 0 ? (
           <p className="py-16 text-center text-slate-400">No books match your search.</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {visible.map((book) => (
-              <BookCard key={book.id} book={book} onDelete={book.isOwner ? handleDelete : undefined} />
+              <BookCard key={book.id} book={book} onDelete={isAdmin ? handleDelete : undefined} />
             ))}
           </div>
         )}
       </main>
 
-      {modalFiles && user && <UploadModal initialFiles={modalFiles} onClose={() => setModalFiles(null)} onUploaded={refresh} />}
-      {/* Files dropped while signed out: ask the user to sign in first */}
-      {modalFiles && !user && !authLoading && <Navigate to="/login" state={{ from: '/' }} replace />}
+      {modalFiles && isAdmin && <UploadModal initialFiles={modalFiles} onClose={() => setModalFiles(null)} onUploaded={refresh} />}
 
       {dragOver && !modalFiles && (
         <div className="animate-fade-in pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/80 backdrop-blur-sm">

@@ -31,6 +31,7 @@ async function initDb() {
       username VARCHAR(30) NOT NULL,
       email VARCHAR(255) NOT NULL,
       password_hash VARCHAR(100) NOT NULL,
+      role ENUM('user','admin') NOT NULL DEFAULT 'user',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_users_username (username),
       UNIQUE KEY uq_users_email (email)
@@ -45,6 +46,15 @@ async function initDb() {
     await pool.query('ALTER TABLE users ADD COLUMN username VARCHAR(30) NULL AFTER id');
     await pool.query("UPDATE users SET username = CONCAT('user', id)"); // placeholder for any pre-existing accounts
     await pool.query('ALTER TABLE users MODIFY username VARCHAR(30) NOT NULL, ADD UNIQUE KEY uq_users_username (username), DROP COLUMN name');
+  }
+
+  // Migration: users gained a role. Everyone starts as a normal user; admins are made with `npm run create-admin`.
+  const [roleCols] = await pool.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'role'",
+    [database]
+  );
+  if (!roleCols.length) {
+    await pool.query("ALTER TABLE users ADD COLUMN role ENUM('user','admin') NOT NULL DEFAULT 'user' AFTER password_hash");
   }
 
   // Migration: books gained an owner. Older rows keep owner_id NULL (nobody can delete them via the UI).
@@ -70,4 +80,5 @@ async function initDb() {
 }
 
 const db = () => pool;
-module.exports = { initDb, db };
+const closeDb = () => pool?.end();
+module.exports = { initDb, db, closeDb };
