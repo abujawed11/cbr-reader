@@ -226,7 +226,14 @@ export default function Library() {
         )}
       </main>
 
-      {modalFiles && isAdmin && <UploadModal initialFiles={modalFiles} onClose={() => setModalFiles(null)} onUploaded={refresh} />}
+      {modalFiles && isAdmin && (
+        <UploadModal
+          initialFiles={modalFiles}
+          existingTitles={(books ?? []).map((b) => b.title)}
+          onClose={() => setModalFiles(null)}
+          onUploaded={refresh}
+        />
+      )}
 
       {dragOver && !modalFiles && (
         <div className="animate-fade-in pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/80 backdrop-blur-sm">

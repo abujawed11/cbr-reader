@@ -61,6 +61,14 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
   }
   const freePages = Math.max(0, parseInt(req.body.freePages, 10) || config.defaultFreePages);
 
+  // Catches the common "already added this" mistake. Titles aren't a unique DB constraint (two different
+  // books can genuinely share a title), so this is a friendly check here, not a hard schema rule.
+  const [dupes] = await db().query('SELECT id FROM books WHERE LOWER(title) = LOWER(?) LIMIT 1', [title]);
+  if (dupes.length) {
+    for (const f of files) fs.unlink(f.path, () => {});
+    return res.status(409).json({ error: `A book titled "${title}" already exists in the library.`, field: 'title' });
+  }
+
   const [result] = await db().query(
     'INSERT INTO books (title, author, description, price_cents, free_pages, owner_id) VALUES (?,?,?,?,?,?)',
     [title, req.body.author || null, req.body.description || null, priceCents, freePages, req.user.id]

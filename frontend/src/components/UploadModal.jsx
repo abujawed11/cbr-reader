@@ -14,7 +14,7 @@ const naturalSort = (a, b) => a.name.localeCompare(b.name, undefined, { numeric:
 const fieldClass =
   'w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30'
 
-export default function UploadModal({ initialFiles = [], onClose, onUploaded }) {
+export default function UploadModal({ initialFiles = [], existingTitles = [], onClose, onUploaded }) {
   const inputRef = useRef(null)
   const uploadRef = useRef(null)
   const [files, setFiles] = useState([])
@@ -60,6 +60,9 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
   }, [files])
 
   const placeholderTitle = files[0] ? files[0].name.replace(/\.[^.]+$/, '') : 'Book title'
+  // What will actually be saved as the title if the field is left blank (same fallback the server uses).
+  const effectiveTitle = (title.trim() || placeholderTitle).toLowerCase()
+  const duplicateTitle = files.length > 0 && existingTitles.some((t) => t.trim().toLowerCase() === effectiveTitle)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -175,6 +178,9 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
             <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-300">
               Title
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={placeholderTitle} className={fieldClass} disabled={uploading} />
+              {duplicateTitle && (
+                <span className="text-xs font-normal text-amber-400">A book titled "{title.trim() || placeholderTitle}" is already in the library.</span>
+              )}
             </label>
             <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-300">
               Author
