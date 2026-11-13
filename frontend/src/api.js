@@ -18,6 +18,10 @@ export const signup = (body) => jsonPost('/api/auth/signup', body)
 export const login = (body) => jsonPost('/api/auth/login', body)
 export const logout = () => request('/api/auth/logout', { method: 'POST' })
 
+// Payments (prices are decided by the server; the browser only names the book)
+export const createOrder = (bookId) => jsonPost('/api/payments/orders', { bookId })
+export const verifyPayment = (response) => jsonPost('/api/payments/verify', response)
+
 export const listBooks = () => request('/api/books')
 
 export const getBook = (id) => request(`/api/books/${id}`)

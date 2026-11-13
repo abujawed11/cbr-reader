@@ -203,8 +203,8 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
             {paid && (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-300">
-                  Price (USD)
-                  <input type="number" min="0.5" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={fieldClass} disabled={uploading} />
+                  Price (₹ INR)
+                  <input type="number" min="1" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={fieldClass} disabled={uploading} />
                 </label>
                 <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-300">
                   Free preview pages

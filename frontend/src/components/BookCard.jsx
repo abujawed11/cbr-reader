@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom'
 import { BookIcon, LockIcon, TrashIcon } from './icons'
 
-const formatPrice = (cents) => `$${(cents / 100).toFixed(2)}`
+import { formatPrice } from '../lib/format'
 
 export default function BookCard({ book, onDelete }) {
   const ready = book.status === 'ready'
   const free = book.priceCents === 0
+  const owned = book.purchased
+  // Free, bought, or admin: the server already worked out how many pages this viewer can read.
+  const fullAccess = ready && book.readablePages >= book.pageCount
 
   const cover = book.coverUrl ? (
     <img
@@ -37,16 +40,16 @@ export default function BookCard({ book, onDelete }) {
       {cover}
       <span
         className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold backdrop-blur ${
-          free ? 'bg-emerald-500/90 text-emerald-950' : 'bg-black/70 text-amber-300'
+          free || owned ? 'bg-emerald-500/90 text-emerald-950' : 'bg-black/70 text-amber-300'
         }`}
       >
-        {!free && <LockIcon className="h-3 w-3" />}
-        {free ? 'Free' : formatPrice(book.priceCents)}
+        {!free && !owned && <LockIcon className="h-3 w-3" />}
+        {owned ? 'Owned' : free ? 'Free' : formatPrice(book.priceCents, book.currency)}
       </span>
       {ready && (
         <div className="absolute inset-x-0 bottom-0 flex translate-y-2 items-end justify-center bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-10 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
           <span className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-ink-950">
-            {free ? 'Read now' : `Read ${book.freePages}-page preview`}
+            {fullAccess ? 'Read now' : `Read ${book.freePages}-page preview`}
           </span>
         </div>
       )}

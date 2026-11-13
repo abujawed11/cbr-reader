@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const config = require('../config');
 const { db } = require('../db');
 const { convertToBook } = require('../converter');
-const { canReadPage } = require('../access');
+const { canReadPage, viewerContext, hasFullAccess } = require('../access');
 const { requireAdmin } = require('../auth');
 
 const router = express.Router();
@@ -14,16 +14,19 @@ const uploadDir = path.join(config.storageDir, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir, limits: { fileSize: 1024 * 1024 * 1024 } });
 
-const bookView = (b) => ({
+// ctx comes from viewerContext(): it says whether this viewer is an admin or owns the book.
+const bookView = (b, ctx) => ({
   id: b.id,
   title: b.title,
   author: b.author,
   description: b.description,
-  priceCents: b.price_cents,
+  priceCents: b.price_cents, // smallest currency unit (paise for INR); the name is historical
+  currency: config.currency,
   freePages: b.free_pages,
   pageCount: b.page_count,
-  // How many pages the current viewer may read (will depend on purchases once auth exists).
-  readablePages: b.price_cents === 0 ? b.page_count : Math.min(b.free_pages, b.page_count),
+  purchased: ctx.owned.has(b.id),
+  // How many pages THIS viewer may read: everything if free, bought, or admin; otherwise the preview.
+  readablePages: hasFullAccess(b, ctx) ? b.page_count : Math.min(b.free_pages, b.page_count),
   status: b.status,
   error: b.error,
   coverUrl: b.status === 'ready' ? `/api/books/${b.id}/cover` : null,
@@ -35,9 +38,10 @@ async function getBook(id) {
 }
 
 // List library
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   const [rows] = await db().query('SELECT * FROM books ORDER BY created_at DESC');
-  res.json(rows.map(bookView));
+  const ctx = await viewerContext(req.user);
+  res.json(rows.map((b) => bookView(b, ctx)));
 });
 
 // Upload one archive (.cbr/.cbz) or several images -> new book (converted in background)
@@ -48,6 +52,9 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
 
   const title = (req.body.title || '').trim() || path.parse(files[0].originalname).name;
   const priceCents = Math.max(0, parseInt(req.body.priceCents, 10) || 0);
+  if (priceCents > 0 && priceCents < 100) {
+    return res.status(400).json({ error: 'The minimum price for a paid book is 1.00' }); // Razorpay minimum
+  }
   const freePages = Math.max(0, parseInt(req.body.freePages, 10) || config.defaultFreePages);
 
   const [result] = await db().query(
@@ -55,7 +62,7 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
     [title, req.body.author || null, req.body.description || null, priceCents, freePages, req.user.id]
   );
   const bookId = result.insertId;
-  res.status(202).json(bookView(await getBook(bookId)));
+  res.status(202).json(bookView(await getBook(bookId), await viewerContext(req.user)));
 
   // Background conversion (swap for a real job queue later)
   convertToBook(bookId, files)
@@ -73,7 +80,7 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
 router.get('/:id', async (req, res) => {
   const book = await getBook(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  res.json(bookView(book));
+  res.json(bookView(book, await viewerContext(req.user)));
 });
 
 router.get('/:id/cover', async (req, res) => {
@@ -89,7 +96,7 @@ async function authorizePage(req, res) {
     res.status(404).json({ error: 'Page not found' });
     return null;
   }
-  if (!(await canReadPage(book, n, req.user?.id))) {
+  if (!(await canReadPage(book, n, req.user))) {
     res.status(403).json({ error: 'Purchase required to read this page' });
     return null;
   }

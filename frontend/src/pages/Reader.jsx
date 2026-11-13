@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getBook, pageUrl, thumbUrl } from '../api'
 import { useAuth } from '../auth/AuthContext'
+import { formatPrice } from '../lib/format'
+import { payForBook } from '../lib/razorpay'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -100,7 +102,7 @@ function PageImage({ bookId, n, fit, zoom, slots }) {
   )
 }
 
-function LockedTile({ n, readable, total, priceCents, fullScreen, signedIn, returnTo, onBackToPreview }) {
+function LockedTile({ n, readable, total, price, fullScreen, signedIn, returnTo, buying, onBuy, onBackToPreview }) {
   return (
     <div
       className={`flex flex-col items-center justify-center gap-4 text-center ${
@@ -118,11 +120,11 @@ function LockedTile({ n, readable, total, priceCents, fullScreen, signedIn, retu
         <>
           {signedIn ? (
             <button
-              disabled
-              title="Payments are coming soon"
-              className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white opacity-70"
+              onClick={onBuy}
+              disabled={buying}
+              className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-600/25 transition hover:bg-accent-500 disabled:cursor-wait disabled:opacity-70"
             >
-              Buy for ${(priceCents / 100).toFixed(2)} · coming soon
+              {buying ? 'Opening payment…' : `Buy for ${price}`}
             </button>
           ) : (
             <Link
@@ -130,7 +132,7 @@ function LockedTile({ n, readable, total, priceCents, fullScreen, signedIn, retu
               state={{ from: returnTo }}
               className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-500"
             >
-              Sign in to purchase · ${(priceCents / 100).toFixed(2)}
+              Sign in to purchase · {price}
             </Link>
           )}
           <button onClick={onBackToPreview} className="text-sm text-slate-400 underline-offset-4 hover:text-white hover:underline">
@@ -208,6 +210,8 @@ export default function Reader() {
   const [zoom, setZoom] = useState(1)
   const [uiVisible, setUiVisible] = useState(true)
   const [panel, setPanel] = useState(null) // null | 'thumbs' | 'help'
+  const [buying, setBuying] = useState(false)
+  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', text }
   const scrollRef = useRef(null)
   const rootRef = useRef(null)
   const hideTimer = useRef(null)
@@ -231,6 +235,33 @@ export default function Reader() {
       cancelled = true
     }
   }, [id])
+
+  // Buying: open Razorpay, then reload the book so the server's updated access (readablePages) takes effect.
+  const buy = useCallback(async () => {
+    if (!book || buying) return
+    setBuying(true)
+    setNotice(null)
+    try {
+      await payForBook(book)
+      setNotice({ type: 'success', text: 'Purchase complete. Enjoy the book!' })
+    } catch (err) {
+      if (err.name !== 'PaymentCancelled') setNotice({ type: 'error', text: err.message })
+    } finally {
+      // Refresh even after an error: the webhook may have unlocked the book in the meantime.
+      try {
+        setBook(await getBook(book.id))
+      } catch {
+        // keep the current view; the next navigation will refetch
+      }
+      setBuying(false)
+    }
+  }, [book, buying])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), notice.type === 'error' ? 10000 : 5000)
+    return () => clearTimeout(timer)
+  }, [notice])
 
   const total = book?.pageCount ?? 0
   const readable = book?.readablePages ?? 0
@@ -372,9 +403,26 @@ export default function Reader() {
   const visualSlots = rtl ? [...slots].reverse() : slots
   const previewEndsAt = readable < total ? ((readable - 1) / Math.max(total - 1, 1)) * 100 : null
   const barBase = 'absolute inset-x-0 z-20 transition duration-300'
+  const price = formatPrice(book.priceCents, book.currency)
 
   return (
     <div ref={rootRef} className="relative h-screen overflow-hidden bg-black" onMouseMove={poke}>
+      {notice && (
+        <div
+          role="status"
+          className={`animate-pop-in absolute left-1/2 top-4 z-50 flex max-w-[90vw] -translate-x-1/2 items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-2xl backdrop-blur ${
+            notice.type === 'success'
+              ? 'border-emerald-500/40 bg-emerald-950/90 text-emerald-200'
+              : 'border-red-500/40 bg-red-950/90 text-red-200'
+          }`}
+        >
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0 opacity-70 hover:opacity-100">
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Viewer */}
       <div
         ref={scrollRef}
@@ -389,16 +437,18 @@ export default function Reader() {
               n={slots[0]}
               readable={readable}
               total={total}
-              priceCents={book.priceCents}
+              price={price}
               fullScreen
               signedIn={!!user}
               returnTo={`/read/${book.id}`}
+              buying={buying}
+              onBuy={buy}
               onBackToPreview={() => goTo(readable)}
             />
           ) : (
             visualSlots.map((n) =>
               n > readable ? (
-                <LockedTile key={n} n={n} readable={readable} total={total} priceCents={book.priceCents} />
+                <LockedTile key={n} n={n} readable={readable} total={total} price={price} />
               ) : (
                 <PageImage key={`${book.id}-${n}`} bookId={book.id} n={n} fit={fit} zoom={zoom} slots={slots.length} />
               )

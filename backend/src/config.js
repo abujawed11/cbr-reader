@@ -18,6 +18,14 @@ module.exports = {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'cbr_reader',
   },
+  // Prices are stored as integers in the currency's smallest unit (paise for INR).
+  currency: (process.env.CURRENCY || 'INR').toUpperCase(),
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    // Set in Razorpay Dashboard > Webhooks. Different from the API key secret.
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
   jwtSecret,
   jwtExpiresIn: '7d',
   cookieName: 'session',

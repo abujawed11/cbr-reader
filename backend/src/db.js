@@ -67,6 +67,28 @@ async function initDb() {
     await pool.query('ALTER TABLE books ADD CONSTRAINT fk_books_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL');
   }
 
+  // One row per checkout attempt. Financial records are kept even if the book or its pages are deleted
+  // (book_id becomes NULL, book_title is a snapshot).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS purchases (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      book_id INT UNSIGNED NULL,
+      book_title VARCHAR(255) NOT NULL,
+      amount INT UNSIGNED NOT NULL,
+      currency CHAR(3) NOT NULL,
+      razorpay_order_id VARCHAR(64) NOT NULL,
+      razorpay_payment_id VARCHAR(64) NULL,
+      status ENUM('created','paid','failed','refunded') NOT NULL DEFAULT 'created',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      paid_at TIMESTAMP NULL,
+      UNIQUE KEY uq_purchases_order (razorpay_order_id),
+      KEY idx_purchases_payment (razorpay_payment_id),
+      KEY idx_purchases_user_book (user_id, book_id, status),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE SET NULL
+    )`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pages (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
