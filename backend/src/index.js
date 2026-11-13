@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const morgan = require('morgan');
 const config = require('./config');
 const { initDb } = require('./db');
 const booksRouter = require('./routes/books');
@@ -7,6 +8,7 @@ const booksRouter = require('./routes/books');
 async function main() {
   await initDb();
   const app = express();
+  app.use(morgan('dev')); // concise colored request log: METHOD /url status time
   app.use(cors({ origin: config.clientOrigin }));
   app.use(express.json());
 
