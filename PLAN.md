@@ -19,7 +19,7 @@ Legend: ✅ built · 🟡 built, being tested or not fully verified · ⬜ not s
 | 2 | Library and reader UI | 🟡 built; you are using it, so feedback welcome |
 | 3 | Accounts and roles | ✅ |
 | 4 | Hardening | ⏭ **skipped for now by choice** (still recommended before launch) |
-| 5 | Payments and purchases (Razorpay) | 🟡 **built, you are testing it through the UI** |
+| 5 | Payments and purchases (Razorpay) | 🟡 **core flow confirmed working**; failed/cancelled messages, webhook, refund still to verify |
 | 6 | Reader and account features | ✅ |
 | 7 | Admin tools | ⬜ |
 | 8 | Catalogue features | ⬜ |
@@ -27,8 +27,9 @@ Legend: ✅ built · 🟡 built, being tested or not fully verified · ⬜ not s
 | 10 | Legal and launch | ⬜ |
 | 11 | Later ideas | ⬜ |
 
-**Where we are right now:** Phase 6 is complete. **The next step is you completing a test payment in the UI** (Phase 5's
-last open item), or picking a Phase 7/8 feature, or the starred Phase 4 hardening items — your call.
+**Where we are right now:** Phase 6 is complete, and a real test payment has been confirmed working end-to-end. Still
+open in Phase 5: the webhook (needs a public URL) and a real refund test — optional for now. **Next: your call between
+the starred Phase 4 hardening items, Phase 7 (admin tools), or Phase 8 (catalogue features).**
 
 ---
 
@@ -133,8 +134,8 @@ rejected, wrong-amount webhook ignored, correct webhook unlocks, replay is harml
 order, refund re-locks, owned/free/admin cases for order creation.
 
 **Not yet verified (this is what your UI test covers):**
-- [ ] Full real payment in the popup (test card / UPI) ending in an unlocked book
-- [ ] The `verify` call against real Razorpay (`payments.fetch`, and `capture` if your account is manual-capture)
+- [x] Full real payment in the popup (test card / UPI) ending in an unlocked book — **confirmed working**
+- [x] The `verify` call against real Razorpay (`payments.fetch`, and `capture` if your account is manual-capture) — confirmed via the above
 - [ ] Failed / cancelled payment messages in the UI
 - [ ] Real webhook delivery from Razorpay (needs a public URL — see §9)
 - [ ] A real refund from the dashboard re-locking the book
