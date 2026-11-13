@@ -21,7 +21,7 @@ Legend: ✅ built · 🟡 built, being tested or not fully verified · ⬜ not s
 | 4 | Hardening | ⏭ **skipped for now by choice** (still recommended before launch) |
 | 5 | Payments and purchases (Razorpay) | 🟡 **core flow confirmed working**; failed/cancelled messages, webhook, refund still to verify |
 | 6 | Reader and account features | ✅ |
-| 7 | Admin tools | ⬜ |
+| 7 | Admin tools | 🟡 edit-book metadata built; rest not started |
 | 8 | Catalogue features | ⬜ |
 | 9 | Production deployment | ⬜ |
 | 10 | Legal and launch | ⬜ |
@@ -171,7 +171,7 @@ Not yet tried with a real wide page in your own library — worth a quick look n
 Skipped by your choice to move on to payments. **Do at least the starred items before real customers or real money.**
 - [ ] ★ **Conversion survives restarts.** Conversion runs inside the web process; a restart mid-way leaves the book on "processing" forever. Add a job queue, or a startup sweep that fails/retries stuck books.
 - [ ] ★ **Zip-bomb / oversized-input protection:** cap extracted size, file count, image dimensions; reject nested archives.
-- [ ] ★ **Change password** and **forgot/reset password** (needs email). Until then the default admin password can only be changed in the DB.
+- [x] ★ **Change password** (Phase 6, `/profile`). **Forgot/reset password** still needs email (Phase 9); until then a locked-out account can only be reset in the DB.
 - [ ] ★ **Security headers:** `helmet`; set `trust proxy` correctly behind a reverse proxy so rate limiting and `secure` cookies work.
 - [ ] ★ Git repository + automated tests (auth, access rules, payments, converter). None exist yet; the project is not under version control.
 - [ ] Upload validation: verify real image content, sensible size limits (currently 1 GB per file).
@@ -181,9 +181,14 @@ Skipped by your choice to move on to payments. **Do at least the starred items b
 - [ ] Centralised input validation (e.g. `zod`) and a real DB migration tool (currently startup `ALTER TABLE` checks).
 - [ ] Rename `books.price_cents` → `price_minor` (the column now holds paise; the name is historical).
 
-### Phase 7 — Admin tools ⬜
-- [ ] Edit a book after upload: title, author, description, price, free-preview pages (currently set once at upload)
-- [ ] Replace/upload a custom cover (currently always page 1)
+### Phase 7 — Admin tools 🟡
+- [x] Edit a book after upload: title, author, description, price, free-preview pages (`PUT /api/books/:id`, edit
+      button on each cover in the library grid). Pages/status are untouched by this; a duplicate-title check
+      (same one upload uses) applies here too, excluding the book being edited.
+- [x] Replace/upload a custom cover (`POST /api/books/:id/cover`, click the cover thumbnail in the edit modal).
+      Processed the same way the converter processes the auto-picked one (resize 400px wide, WebP). The cover URL
+      carries a cache-busting `?v=<file mtime>` so a new upload shows up immediately everywhere, not just after a
+      hard refresh.
 - [ ] Reorder, delete, or replace individual pages; retry failed conversions
 - [ ] Manage users: list, promote/demote admin, disable accounts
 - [ ] Sales dashboard (revenue, purchases per book); refund from the app

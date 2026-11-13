@@ -37,6 +37,15 @@ export const thumbUrl = (bookId, n) => `/api/books/${bookId}/pages/${n}/thumb`
 
 export const deleteBook = (id) => request(`/api/books/${id}`, { method: 'DELETE' })
 
+export const updateBook = (id, body) =>
+  request(`/api/books/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+export const uploadCover = (id, file) => {
+  const form = new FormData()
+  form.append('cover', file)
+  return request(`/api/books/${id}/cover`, { method: 'POST', body: form })
+}
+
 export const addFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'PUT' })
 export const removeFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'DELETE' })
 

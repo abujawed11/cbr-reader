@@ -146,6 +146,12 @@ export const HeartIcon = ({ filled, ...p }) => (
     <path d="M12 20.5s-7-4.35-9.5-8.8C.9 8.6 2.3 5 5.8 4.3c2-.4 3.9.5 5 2.2 1.1-1.7 3-2.6 5-2.2 3.5.7 4.9 4.3 3.3 7.4C19 16.15 12 20.5 12 20.5z" />
   </Icon>
 )
+export const EditIcon = (p) => (
+  <Icon {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+  </Icon>
+)
 export const FileIcon = (p) => (
   <Icon {...p}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addFavorite, removeFavorite } from '../api'
 import { useAuth } from '../auth/AuthContext'
-import { BookIcon, HeartIcon, LockIcon, TrashIcon } from './icons'
+import { BookIcon, EditIcon, HeartIcon, LockIcon, TrashIcon } from './icons'
 
 import { formatPrice } from '../lib/format'
 
-export default function BookCard({ book, onDelete, onFavoriteChange }) {
+export default function BookCard({ book, onDelete, onEdit, onFavoriteChange }) {
   const { user } = useAuth()
   const ready = book.status === 'ready'
   const free = book.priceCents === 0
@@ -86,6 +86,16 @@ export default function BookCard({ book, onDelete, onFavoriteChange }) {
   return (
     <article className="group relative flex flex-col gap-3">
       {ready ? <Link to={`/read/${book.id}`}>{coverBox}</Link> : coverBox}
+      {onEdit && (
+        <button
+          onClick={() => onEdit(book)}
+          title="Edit book"
+          aria-label={`Edit ${book.title}`}
+          className="absolute right-11 top-2 hidden rounded-full bg-black/70 p-1.5 text-slate-200 backdrop-blur hover:bg-accent-600 hover:text-white group-hover:block"
+        >
+          <EditIcon className="h-4 w-4" />
+        </button>
+      )}
       {onDelete && (
         <button
           onClick={() => onDelete(book)}

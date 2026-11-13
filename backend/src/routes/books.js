@@ -13,6 +13,19 @@ const router = express.Router();
 const uploadDir = path.join(config.storageDir, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir, limits: { fileSize: 1024 * 1024 * 1024 } });
+const coverUpload = multer({ dest: uploadDir, limits: { fileSize: 20 * 1024 * 1024 } });
+
+// A query string built from the cover file's own mtime, so a re-uploaded cover shows up immediately instead
+// of readers keeping a browser-cached copy of the old one at the same URL.
+function coverUrl(b) {
+  if (b.status !== 'ready') return null;
+  try {
+    const v = fs.statSync(path.join(config.storageDir, 'books', String(b.id), 'cover.webp')).mtimeMs;
+    return `/api/books/${b.id}/cover?v=${v}`;
+  } catch {
+    return `/api/books/${b.id}/cover`;
+  }
+}
 
 // ctx comes from viewerContext(): it says whether this viewer is an admin or owns the book.
 const bookView = (b, ctx) => ({
@@ -29,7 +42,7 @@ const bookView = (b, ctx) => ({
   readablePages: hasFullAccess(b, ctx) ? b.page_count : Math.min(b.free_pages, b.page_count),
   status: b.status,
   error: b.error,
-  coverUrl: b.status === 'ready' ? `/api/books/${b.id}/cover` : null,
+  coverUrl: coverUrl(b),
   // Where this signed-in viewer last left off reading, and when; null for guests or never-opened books.
   lastPage: ctx.progress?.get(b.id)?.page ?? null,
   lastReadAt: ctx.progress?.get(b.id)?.updatedAt ?? null,
@@ -102,9 +115,60 @@ router.get('/:id', async (req, res) => {
   res.json(view);
 });
 
+// Edit metadata after upload. Admin only; does not touch pages, cover, or status.
+router.put('/:id', requireAdmin, async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+
+  const title = (req.body.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Title is required', field: 'title' });
+
+  const priceCents = Math.max(0, parseInt(req.body.priceCents, 10) || 0);
+  if (priceCents > 0 && priceCents < 100) {
+    return res.status(400).json({ error: 'The minimum price for a paid book is 1.00', field: 'price' }); // Razorpay minimum
+  }
+  const freePages = Math.max(0, parseInt(req.body.freePages, 10) || 0);
+
+  const [dupes] = await db().query('SELECT id FROM books WHERE LOWER(title) = LOWER(?) AND id <> ? LIMIT 1', [title, book.id]);
+  if (dupes.length) {
+    return res.status(409).json({ error: `A book titled "${title}" already exists in the library.`, field: 'title' });
+  }
+
+  await db().query('UPDATE books SET title=?, author=?, description=?, price_cents=?, free_pages=? WHERE id=?', [
+    title,
+    req.body.author || null,
+    req.body.description || null,
+    priceCents,
+    freePages,
+    book.id,
+  ]);
+  res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
+});
+
 router.get('/:id/cover', async (req, res) => {
   const file = path.join(config.storageDir, 'books', String(parseInt(req.params.id, 10)), 'cover.webp');
   res.sendFile(file, (err) => err && !res.headersSent && res.status(404).end());
+});
+
+// Replace the auto-picked (page 1) cover with a specific image. Admin only.
+router.post('/:id/cover', requireAdmin, coverUpload.single('cover'), async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book || !req.file) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(book ? 400 : 404).json({ error: book ? 'No image uploaded' : 'Book not found' });
+  }
+
+  const dir = path.join(config.storageDir, 'books', String(book.id));
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    // Same processing the converter applies to the auto-picked cover, so a custom one matches in size/format.
+    await sharp(req.file.path).rotate().resize({ width: 400, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(dir, 'cover.webp'));
+  } catch {
+    return res.status(400).json({ error: 'Could not process that image. Please upload a JPG, PNG or WebP file.' });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+  res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
 });
 
 // Shared paywall gate for page + thumbnail routes. Sends the error response and returns null if denied.

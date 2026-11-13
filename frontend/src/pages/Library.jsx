@@ -4,6 +4,7 @@ import { deleteBook, listBooks } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
 import ContinueReadingRow from '../components/ContinueReadingRow'
+import EditBookModal from '../components/EditBookModal'
 import UploadModal from '../components/UploadModal'
 import UserMenu from '../components/UserMenu'
 import { BookIcon, PlusIcon, SearchIcon, UploadIcon } from '../components/icons'
@@ -23,6 +24,7 @@ export default function Library() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [modalFiles, setModalFiles] = useState(null) // null = closed, array = open (maybe prefilled)
+  const [editingBook, setEditingBook] = useState(null) // null = closed, else the book being edited
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
 
@@ -91,6 +93,10 @@ export default function Library() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  const handleBookSaved = (updated) => {
+    setBooks((prev) => (prev ?? []).map((b) => (b.id === updated.id ? updated : b)))
   }
 
   const continueReading = useMemo(() => {
@@ -220,7 +226,7 @@ export default function Library() {
         ) : (
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {visible.map((book) => (
-              <BookCard key={book.id} book={book} onDelete={isAdmin ? handleDelete : undefined} />
+              <BookCard key={book.id} book={book} onDelete={isAdmin ? handleDelete : undefined} onEdit={isAdmin ? setEditingBook : undefined} />
             ))}
           </div>
         )}
@@ -234,6 +240,8 @@ export default function Library() {
           onUploaded={refresh}
         />
       )}
+
+      {editingBook && <EditBookModal book={editingBook} onClose={() => setEditingBook(null)} onSaved={handleBookSaved} />}
 
       {dragOver && !modalFiles && (
         <div className="animate-fade-in pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/80 backdrop-blur-sm">
