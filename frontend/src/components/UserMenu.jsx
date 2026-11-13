@@ -49,6 +49,14 @@ export default function UserMenu() {
           >
             My library
           </Link>
+          <Link
+            to="/profile"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-slate-200 hover:bg-ink-700"
+          >
+            Account settings
+          </Link>
           <button
             role="menuitem"
             onClick={() => {

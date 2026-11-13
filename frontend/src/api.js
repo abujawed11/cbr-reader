@@ -17,6 +17,12 @@ export const fetchMe = () => request('/api/auth/me')
 export const signup = (body) => jsonPost('/api/auth/signup', body)
 export const login = (body) => jsonPost('/api/auth/login', body)
 export const logout = () => request('/api/auth/logout', { method: 'POST' })
+const jsonPut = (url, body) =>
+  request(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+export const updateEmail = (email) => jsonPut('/api/auth/email', { email })
+export const changePassword = (body) => jsonPut('/api/auth/password', body)
+export const deleteAccount = (password) =>
+  request('/api/auth/me', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
 
 // Payments (prices are decided by the server; the browser only names the book)
 export const createOrder = (bookId) => jsonPost('/api/payments/orders', { bookId })

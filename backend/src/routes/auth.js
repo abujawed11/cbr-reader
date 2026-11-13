@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { db } = require('../db');
-const { startSession, endSession, publicUser } = require('../auth');
+const { startSession, endSession, publicUser, requireAuth } = require('../auth');
 
 const router = express.Router();
 
@@ -77,6 +77,56 @@ router.post('/logout', (_req, res) => {
 // Returns the signed-in user, or null (200) when logged out so the client can check without an error.
 router.get('/me', (req, res) => {
   res.json(req.user ? publicUser(req.user) : null);
+});
+
+router.put('/email', authLimiter, requireAuth, async (req, res) => {
+  const email = clean(req.body.email).toLowerCase();
+  if (!EMAIL_RE.test(email) || email.length > 255) return bad(res, 'Please enter a valid email address', 'email');
+
+  try {
+    await db().query('UPDATE users SET email = ? WHERE id = ?', [email, req.user.id]);
+    res.json(publicUser({ ...req.user, email }));
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An account with this email already exists', field: 'email' });
+    throw err;
+  }
+});
+
+router.put('/password', authLimiter, requireAuth, async (req, res) => {
+  const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+  const confirmNewPassword = typeof req.body.confirmNewPassword === 'string' ? req.body.confirmNewPassword : '';
+
+  const [rows] = await db().query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+  if (!(await bcrypt.compare(currentPassword, rows[0].password_hash))) {
+    return bad(res, 'Current password is incorrect', 'currentPassword');
+  }
+  if (newPassword.length < 8) return bad(res, 'Password must be at least 8 characters', 'newPassword');
+  if (newPassword.length > 72) return bad(res, 'Password must be at most 72 characters', 'newPassword');
+  if (newPassword !== confirmNewPassword) return bad(res, 'Passwords do not match', 'confirmNewPassword');
+
+  const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await db().query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+  res.status(204).end();
+});
+
+// Self-service delete is refused for accounts with any purchase history, since those rows are financial
+// records we keep (see the `purchases` table); such accounts need a human to handle closing them.
+router.delete('/me', authLimiter, requireAuth, async (req, res) => {
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const [rows] = await db().query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+  if (!(await bcrypt.compare(password, rows[0].password_hash))) {
+    return bad(res, 'Incorrect password', 'password');
+  }
+
+  const [[{ count }]] = await db().query('SELECT COUNT(*) AS count FROM purchases WHERE user_id = ?', [req.user.id]);
+  if (count > 0) {
+    return res.status(409).json({ error: "Accounts with purchase history can't be deleted automatically. Please contact support." });
+  }
+
+  await db().query('DELETE FROM users WHERE id = ?', [req.user.id]);
+  endSession(res);
+  res.status(204).end();
 });
 
 module.exports = router;
