@@ -33,6 +33,7 @@ const bookView = (b, ctx) => ({
   // Where this signed-in viewer last left off reading, and when; null for guests or never-opened books.
   lastPage: ctx.progress?.get(b.id)?.page ?? null,
   lastReadAt: ctx.progress?.get(b.id)?.updatedAt ?? null,
+  favorited: ctx.favorites?.has(b.id) ?? false,
 });
 
 async function getBook(id) {
@@ -138,6 +139,18 @@ router.put('/:id/progress', requireAuth, async (req, res) => {
      ON DUPLICATE KEY UPDATE page = VALUES(page)`,
     [req.user.id, book.id, page]
   );
+  res.status(204).end();
+});
+
+router.put('/:id/favorite', requireAuth, async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  await db().query('INSERT IGNORE INTO favorites (user_id, book_id) VALUES (?, ?)', [req.user.id, book.id]);
+  res.status(204).end();
+});
+
+router.delete('/:id/favorite', requireAuth, async (req, res) => {
+  await db().query('DELETE FROM favorites WHERE user_id = ? AND book_id = ?', [req.user.id, req.params.id]);
   res.status(204).end();
 });
 

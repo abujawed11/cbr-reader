@@ -134,6 +134,11 @@ export const EyeOffIcon = (p) => (
     <path d="M6.5 6.5 3 3M17.5 17.5 21 21M9.9 9.9a3 3 0 0 0 4.2 4.2" />
   </Icon>
 )
+export const HeartIcon = ({ filled, ...p }) => (
+  <Icon {...p} fill={filled ? 'currentColor' : 'none'}>
+    <path d="M12 20.5s-7-4.35-9.5-8.8C.9 8.6 2.3 5 5.8 4.3c2-.4 3.9.5 5 2.2 1.1-1.7 3-2.6 5-2.2 3.5.7 4.9 4.3 3.3 7.4C19 16.15 12 20.5 12 20.5z" />
+  </Icon>
+)
 export const FileIcon = (p) => (
   <Icon {...p}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

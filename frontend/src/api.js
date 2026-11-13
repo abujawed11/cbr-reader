@@ -37,6 +37,9 @@ export const thumbUrl = (bookId, n) => `/api/books/${bookId}/pages/${n}/thumb`
 
 export const deleteBook = (id) => request(`/api/books/${id}`, { method: 'DELETE' })
 
+export const addFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'PUT' })
+export const removeFavorite = (bookId) => request(`/api/books/${bookId}/favorite`, { method: 'DELETE' })
+
 export const saveProgress = (bookId, page) =>
   request(`/api/books/${bookId}/progress`, {
     method: 'PUT',

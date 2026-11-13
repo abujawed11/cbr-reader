@@ -6,15 +6,17 @@ const { db } = require('./db');
 
 // Everything we need to know about the person asking, loaded once per request.
 async function viewerContext(user) {
-  if (!user) return { admin: false, owned: new Set(), progress: new Map() };
-  const [[purchaseRows], [progressRows]] = await Promise.all([
+  if (!user) return { admin: false, owned: new Set(), progress: new Map(), favorites: new Set() };
+  const [[purchaseRows], [progressRows], [favoriteRows]] = await Promise.all([
     db().query("SELECT book_id FROM purchases WHERE user_id = ? AND status = 'paid' AND book_id IS NOT NULL", [user.id]),
     db().query('SELECT book_id, page, updated_at FROM reading_progress WHERE user_id = ?', [user.id]),
+    db().query('SELECT book_id FROM favorites WHERE user_id = ?', [user.id]),
   ]);
   return {
     admin: user.role === 'admin',
     owned: new Set(purchaseRows.map((r) => r.book_id)),
     progress: new Map(progressRows.map((r) => [r.book_id, { page: r.page, updatedAt: r.updated_at }])),
+    favorites: new Set(favoriteRows.map((r) => r.book_id)),
   };
 }
 
