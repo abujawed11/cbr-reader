@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.1",
     "adm-zip": "^0.6.1",
     "cors": "^2.8.6",
     "dotenv": "^18.0.10",
@@ -20,6 +21,7 @@
     "multer": "^2.5.0",
     "mysql2": "^3.24.6",
     "node-unrar-js": "^2.0.2",
+    "pdfjs-dist": "^6.5.438",
     "sharp": "^0.35.5"
   }
 }

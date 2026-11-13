@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadBook } from '../api'
 import { CloseIcon, FileIcon, UploadIcon } from './icons'
 
-const ACCEPT = '.cbr,.cbz,.zip,.rar,image/*'
-const ALLOWED = /\.(cbr|cbz|zip|rar|jpe?g|png|webp|gif|bmp|avif|tiff?)$/i
-const ARCHIVE = /\.(cbr|cbz|zip|rar)$/i
+const ACCEPT = '.cbr,.cbz,.zip,.rar,.pdf,image/*'
+const ALLOWED = /\.(cbr|cbz|zip|rar|pdf|jpe?g|png|webp|gif|bmp|avif|tiff?)$/i
+const ARCHIVE = /\.(cbr|cbz|zip|rar|pdf)$/i // "document" files (not loose page images)
 
 const formatSize = (bytes) =>
   bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -32,7 +32,7 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
   const addFiles = (incoming) => {
     const list = Array.from(incoming)
     const valid = list.filter((f) => ALLOWED.test(f.name))
-    if (valid.length < list.length) setError('Some files were skipped: only .cbr, .cbz and image files are supported.')
+    if (valid.length < list.length) setError('Some files were skipped: only .cbr, .cbz, .pdf and image files are supported.')
     else setError('')
     setFiles((prev) => [...prev, ...valid].sort(naturalSort))
   }
@@ -95,7 +95,7 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
         <div className="flex items-center justify-between border-b border-ink-700 px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold text-white">Add a book</h2>
-            <p className="text-sm text-slate-400">Upload a comic archive or a set of page images.</p>
+            <p className="text-sm text-slate-400">Upload a comic archive, a PDF, or a set of page images.</p>
           </div>
           <button type="button" onClick={cancel} className="rounded-lg p-2 text-slate-400 hover:bg-ink-700 hover:text-white" aria-label="Close">
             <CloseIcon />
@@ -124,7 +124,7 @@ export default function UploadModal({ initialFiles = [], onClose, onUploaded }) 
               <UploadIcon className="h-6 w-6" />
             </span>
             <p className="text-sm font-medium text-slate-100">Drag &amp; drop files here, or click to browse</p>
-            <p className="text-xs text-slate-400">.cbr · .cbz · .zip · .rar · JPG · PNG · WebP</p>
+            <p className="text-xs text-slate-400">.cbr · .cbz · .zip · .rar · .pdf · JPG · PNG · WebP</p>
             <input
               ref={inputRef}
               type="file"

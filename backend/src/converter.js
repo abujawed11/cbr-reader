@@ -4,6 +4,7 @@ const AdmZip = require('adm-zip');
 const { createExtractorFromFile } = require('node-unrar-js');
 const sharp = require('sharp');
 const config = require('./config');
+const { renderPdfToImages } = require('./pdf');
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|avif|tiff?)$/i;
 const naturalSort = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -54,7 +55,10 @@ async function extractImages(uploads, workDir) {
     } else if (type === 'image') {
       images.push({ path: file.path, name: file.originalname });
     } else if (type === 'pdf') {
-      throw new Error('PDF conversion is not implemented yet');
+      const dest = path.join(workDir, `pdf-${i}`);
+      for (const p of await renderPdfToImages(file.path, dest)) {
+        images.push({ path: p, name: path.relative(dest, p) });
+      }
     } else {
       throw new Error(`Unsupported file: ${file.originalname}`);
     }
