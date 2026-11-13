@@ -383,26 +383,28 @@ export default function Reader() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return
+      // Zoomed in: arrow keys pan around the enlarged page instead of turning it. Panning is a continuous,
+      // repeated action, so it deliberately does NOT call poke() — that would keep re-showing (and resetting
+      // the hide timer for) the toolbar on every single press while you're just nudging the view around.
+      if (!webtoon && zoom > 1) {
+        switch (e.key) {
+          case 'ArrowLeft':
+            e.preventDefault()
+            return scrollRef.current?.scrollBy({ left: -PAN_STEP })
+          case 'ArrowRight':
+            e.preventDefault()
+            return scrollRef.current?.scrollBy({ left: PAN_STEP })
+          case 'ArrowUp':
+            e.preventDefault()
+            return scrollRef.current?.scrollBy({ top: -PAN_STEP })
+          case 'ArrowDown':
+            e.preventDefault()
+            return scrollRef.current?.scrollBy({ top: PAN_STEP })
+        }
+      }
       poke()
       // Page-turning keys don't apply to a continuous scroll; let the browser's own scrolling handle them instead.
       if (!webtoon) {
-        // Zoomed in: arrow keys pan around the enlarged page instead of turning it.
-        if (zoom > 1) {
-          switch (e.key) {
-            case 'ArrowLeft':
-              e.preventDefault()
-              return scrollRef.current?.scrollBy({ left: -PAN_STEP })
-            case 'ArrowRight':
-              e.preventDefault()
-              return scrollRef.current?.scrollBy({ left: PAN_STEP })
-            case 'ArrowUp':
-              e.preventDefault()
-              return scrollRef.current?.scrollBy({ top: -PAN_STEP })
-            case 'ArrowDown':
-              e.preventDefault()
-              return scrollRef.current?.scrollBy({ top: PAN_STEP })
-          }
-        }
         switch (e.key) {
           case 'ArrowLeft':
             return left()
