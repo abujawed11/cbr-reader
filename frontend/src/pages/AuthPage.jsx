@@ -111,12 +111,12 @@ export default function AuthPage({ mode }) {
           <span className="rounded-xl bg-accent-600 p-2 text-white shadow-lg shadow-accent-600/30">
             <BookIcon className="h-5 w-5" />
           </span>
-          <span className="text-xl font-bold tracking-tight text-white">Bookshelf</span>
+          <span className="font-display text-xl font-bold tracking-tight text-white">Bookshelf</span>
         </Link>
 
         <form onSubmit={submit} noValidate className="flex flex-col gap-4 rounded-2xl border border-ink-700 bg-ink-800 p-6 shadow-2xl sm:p-8">
           <div>
-            <h1 className="text-xl font-semibold text-white">{isSignup ? 'Create your account' : 'Welcome back'}</h1>
+            <h1 className="font-display text-xl font-semibold text-white">{isSignup ? 'Create your account' : 'Welcome back'}</h1>
             <p className="mt-1 text-sm text-slate-400">
               {isSignup ? 'Sign up to upload books and unlock paid ones.' : 'Sign in to continue reading.'}
             </p>

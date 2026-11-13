@@ -111,7 +111,7 @@ export default function Library() {
             <span className="rounded-xl bg-accent-600 p-2 text-white shadow-lg shadow-accent-600/30">
               <BookIcon className="h-5 w-5" />
             </span>
-            <span className="hidden text-lg font-bold tracking-tight text-white sm:block">Bookshelf</span>
+            <span className="font-display hidden text-lg font-bold tracking-tight text-white sm:block">Bookshelf</span>
           </div>
 
           <div className="relative ml-auto w-full max-w-sm">
@@ -149,7 +149,7 @@ export default function Library() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Library</h1>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-white">Library</h1>
             <p className="text-sm text-slate-400">
               {books === null ? 'Loading…' : `${books.length} ${books.length === 1 ? 'book' : 'books'}`}
             </p>
