@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { deleteBook, listBooks } from '../api'
+import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
 import UploadModal from '../components/UploadModal'
+import UserMenu from '../components/UserMenu'
 import { BookIcon, PlusIcon, SearchIcon, UploadIcon } from '../components/icons'
 
 const FILTERS = [
@@ -11,6 +14,8 @@ const FILTERS = [
 ]
 
 export default function Library() {
+  const { user, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
   const [books, setBooks] = useState(null) // null = first load in progress
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -29,9 +34,11 @@ export default function Library() {
     }
   }, [])
 
+  // Reload when the signed-in user changes: ownership flags (delete rights) depend on it.
+  const userId = user?.id
   useEffect(() => {
     refresh()
-  }, [refresh])
+  }, [refresh, userId])
 
   // Poll while any book is still being converted.
   const hasProcessing = books?.some((b) => b.status === 'processing')
@@ -93,7 +100,10 @@ export default function Library() {
     })
   }, [books, query, filter])
 
-  const openUpload = () => setModalFiles([])
+  const openUpload = () => {
+    if (!user) return navigate('/login', { state: { from: '/' } })
+    setModalFiles([])
+  }
 
   return (
     <div className="min-h-screen">
@@ -123,6 +133,16 @@ export default function Library() {
             <PlusIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Add book</span>
           </button>
+
+          {authLoading ? (
+            <span className="h-9 w-9 shrink-0" />
+          ) : user ? (
+            <UserMenu />
+          ) : (
+            <Link to="/login" state={{ from: '/' }} className="shrink-0 rounded-full border border-ink-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-ink-700">
+              Sign in
+            </Link>
+          )}
         </div>
       </header>
 
@@ -173,7 +193,7 @@ export default function Library() {
             <div>
               <h2 className="text-lg font-semibold text-white">Your shelf is empty</h2>
               <p className="mt-1 max-w-sm text-sm text-slate-400">
-                Drop a .cbr or .cbz file anywhere on this page, or add your first book to start reading.
+                Drop a .cbr, .cbz or .pdf file anywhere on this page, or add your first book to start reading.
               </p>
             </div>
             <button onClick={openUpload} className="rounded-full bg-accent-600 px-5 py-2 text-sm font-semibold text-white hover:bg-accent-500">
@@ -185,13 +205,15 @@ export default function Library() {
         ) : (
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {visible.map((book) => (
-              <BookCard key={book.id} book={book} onDelete={handleDelete} />
+              <BookCard key={book.id} book={book} onDelete={book.isOwner ? handleDelete : undefined} />
             ))}
           </div>
         )}
       </main>
 
-      {modalFiles && <UploadModal initialFiles={modalFiles} onClose={() => setModalFiles(null)} onUploaded={refresh} />}
+      {modalFiles && user && <UploadModal initialFiles={modalFiles} onClose={() => setModalFiles(null)} onUploaded={refresh} />}
+      {/* Files dropped while signed out: ask the user to sign in first */}
+      {modalFiles && !user && !authLoading && <Navigate to="/login" state={{ from: '/' }} replace />}
 
       {dragOver && !modalFiles && (
         <div className="animate-fade-in pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/80 backdrop-blur-sm">

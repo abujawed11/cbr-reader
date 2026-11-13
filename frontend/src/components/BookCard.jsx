@@ -56,14 +56,16 @@ export default function BookCard({ book, onDelete }) {
   return (
     <article className="group relative flex flex-col gap-3">
       {ready ? <Link to={`/read/${book.id}`}>{coverBox}</Link> : coverBox}
-      <button
-        onClick={() => onDelete(book)}
-        title="Delete book"
-        aria-label={`Delete ${book.title}`}
-        className="absolute right-2 top-2 hidden rounded-full bg-black/70 p-1.5 text-slate-200 backdrop-blur hover:bg-red-600 hover:text-white group-hover:block"
-      >
-        <TrashIcon className="h-4 w-4" />
-      </button>
+      {onDelete && (
+        <button
+          onClick={() => onDelete(book)}
+          title="Delete book"
+          aria-label={`Delete ${book.title}`}
+          className="absolute right-2 top-2 hidden rounded-full bg-black/70 p-1.5 text-slate-200 backdrop-blur hover:bg-red-600 hover:text-white group-hover:block"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      )}
       <div className="px-0.5">
         <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-slate-100">{book.title}</h3>
         <p className="mt-0.5 truncate text-xs text-slate-500">

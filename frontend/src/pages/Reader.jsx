@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getBook, pageUrl, thumbUrl } from '../api'
+import { useAuth } from '../auth/AuthContext'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -99,7 +100,7 @@ function PageImage({ bookId, n, fit, zoom, slots }) {
   )
 }
 
-function LockedTile({ n, readable, total, priceCents, fullScreen, onBackToPreview }) {
+function LockedTile({ n, readable, total, priceCents, fullScreen, signedIn, returnTo, onBackToPreview }) {
   return (
     <div
       className={`flex flex-col items-center justify-center gap-4 text-center ${
@@ -115,13 +116,23 @@ function LockedTile({ n, readable, total, priceCents, fullScreen, onBackToPrevie
       </p>
       {fullScreen && (
         <>
-          <button
-            disabled
-            title="Payments are coming soon"
-            className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white opacity-70"
-          >
-            Buy for ${(priceCents / 100).toFixed(2)} · coming soon
-          </button>
+          {signedIn ? (
+            <button
+              disabled
+              title="Payments are coming soon"
+              className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white opacity-70"
+            >
+              Buy for ${(priceCents / 100).toFixed(2)} · coming soon
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              state={{ from: returnTo }}
+              className="rounded-full bg-accent-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-500"
+            >
+              Sign in to purchase · ${(priceCents / 100).toFixed(2)}
+            </Link>
+          )}
           <button onClick={onBackToPreview} className="text-sm text-slate-400 underline-offset-4 hover:text-white hover:underline">
             Back to the last free page
           </button>
@@ -187,6 +198,7 @@ const SHORTCUTS = [
 
 export default function Reader() {
   const { id } = useParams()
+  const { user } = useAuth()
   const [book, setBook] = useState(null)
   const [error, setError] = useState('')
   const [page, setPage] = useState(1)
@@ -379,6 +391,8 @@ export default function Reader() {
               total={total}
               priceCents={book.priceCents}
               fullScreen
+              signedIn={!!user}
+              returnTo={`/read/${book.id}`}
               onBackToPreview={() => goTo(readable)}
             />
           ) : (

@@ -2,10 +2,21 @@ async function request(url, options) {
   const res = await fetch(url, options)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Request failed (${res.status})`)
+    const err = new Error(body.error || `Request failed (${res.status})`)
+    err.field = body.field // which form field the server complained about, if any
+    throw err
   }
   return res.status === 204 ? null : res.json()
 }
+
+const jsonPost = (url, body) =>
+  request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+// Auth (the session lives in an httpOnly cookie, so the client never handles the token itself)
+export const fetchMe = () => request('/api/auth/me')
+export const signup = (body) => jsonPost('/api/auth/signup', body)
+export const login = (body) => jsonPost('/api/auth/login', body)
+export const logout = () => request('/api/auth/logout', { method: 'POST' })
 
 export const listBooks = () => request('/api/books')
 

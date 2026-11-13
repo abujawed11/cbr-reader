@@ -7,14 +7,16 @@ const config = require('../config');
 const { db } = require('../db');
 const { convertToBook } = require('../converter');
 const { canReadPage } = require('../access');
+const { requireAuth } = require('../auth');
 
 const router = express.Router();
 const uploadDir = path.join(config.storageDir, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir, limits: { fileSize: 1024 * 1024 * 1024 } });
 
-const bookView = (b) => ({
+const bookView = (b, user) => ({
   id: b.id,
+  isOwner: !!user && b.owner_id === user.id,
   title: b.title,
   author: b.author,
   description: b.description,
@@ -34,13 +36,14 @@ async function getBook(id) {
 }
 
 // List library
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   const [rows] = await db().query('SELECT * FROM books ORDER BY created_at DESC');
-  res.json(rows.map(bookView));
+  res.json(rows.map((b) => bookView(b, req.user)));
 });
 
 // Upload one archive (.cbr/.cbz) or several images -> new book (converted in background)
-router.post('/', upload.array('files', 2000), async (req, res) => {
+// requireAuth runs before multer so unauthenticated clients can't make us write files to disk.
+router.post('/', requireAuth, upload.array('files', 2000), async (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'No files uploaded' });
 
@@ -49,11 +52,11 @@ router.post('/', upload.array('files', 2000), async (req, res) => {
   const freePages = Math.max(0, parseInt(req.body.freePages, 10) || config.defaultFreePages);
 
   const [result] = await db().query(
-    'INSERT INTO books (title, author, description, price_cents, free_pages) VALUES (?,?,?,?,?)',
-    [title, req.body.author || null, req.body.description || null, priceCents, freePages]
+    'INSERT INTO books (title, author, description, price_cents, free_pages, owner_id) VALUES (?,?,?,?,?,?)',
+    [title, req.body.author || null, req.body.description || null, priceCents, freePages, req.user.id]
   );
   const bookId = result.insertId;
-  res.status(202).json(bookView(await getBook(bookId)));
+  res.status(202).json(bookView(await getBook(bookId), req.user));
 
   // Background conversion (swap for a real job queue later)
   convertToBook(bookId, files)
@@ -71,7 +74,7 @@ router.post('/', upload.array('files', 2000), async (req, res) => {
 router.get('/:id', async (req, res) => {
   const book = await getBook(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  res.json(bookView(book));
+  res.json(bookView(book, req.user));
 });
 
 router.get('/:id/cover', async (req, res) => {
@@ -87,7 +90,7 @@ async function authorizePage(req, res) {
     res.status(404).json({ error: 'Page not found' });
     return null;
   }
-  if (!(await canReadPage(book, n, null))) {
+  if (!(await canReadPage(book, n, req.user?.id))) {
     res.status(403).json({ error: 'Purchase required to read this page' });
     return null;
   }
@@ -116,9 +119,10 @@ router.get('/:id/pages/:n/thumb', async (req, res) => {
   res.sendFile(thumb);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   const book = await getBook(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
+  if (book.owner_id !== req.user.id) return res.status(403).json({ error: 'You can only delete your own books' });
   await db().query('DELETE FROM books WHERE id = ?', [book.id]);
   fs.rmSync(path.join(config.storageDir, 'books', String(book.id)), { recursive: true, force: true });
   res.status(204).end();

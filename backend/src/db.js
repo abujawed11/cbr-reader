@@ -26,6 +26,38 @@ async function initDb() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(30) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      password_hash VARCHAR(100) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_users_username (username),
+      UNIQUE KEY uq_users_email (email)
+    )`);
+
+  // Migration: the first version of users had a free-text "name" instead of a unique "username".
+  const [userCols] = await pool.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'username'",
+    [database]
+  );
+  if (!userCols.length) {
+    await pool.query('ALTER TABLE users ADD COLUMN username VARCHAR(30) NULL AFTER id');
+    await pool.query("UPDATE users SET username = CONCAT('user', id)"); // placeholder for any pre-existing accounts
+    await pool.query('ALTER TABLE users MODIFY username VARCHAR(30) NOT NULL, ADD UNIQUE KEY uq_users_username (username), DROP COLUMN name');
+  }
+
+  // Migration: books gained an owner. Older rows keep owner_id NULL (nobody can delete them via the UI).
+  const [cols] = await pool.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = 'books' AND column_name = 'owner_id'",
+    [database]
+  );
+  if (!cols.length) {
+    await pool.query('ALTER TABLE books ADD COLUMN owner_id INT UNSIGNED NULL, ADD KEY idx_books_owner (owner_id)');
+    await pool.query('ALTER TABLE books ADD CONSTRAINT fk_books_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL');
+  }
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS pages (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       book_id INT UNSIGNED NOT NULL,
