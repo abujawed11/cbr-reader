@@ -3,7 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const config = require('./config');
-const { initDb } = require('./db');
+const { initDb, db } = require('./db');
 const { attachUser } = require('./auth');
 const authRouter = require('./routes/auth');
 const booksRouter = require('./routes/books');
@@ -11,6 +11,20 @@ const paymentsRouter = require('./routes/payments');
 
 async function main() {
   await initDb();
+
+  // Conversion runs in-process with no queue/worker behind it, so anything still 'processing' when the
+  // server stopped (crash, manual kill, redeploy) didn't actually keep running - it just died with the
+  // process, leaving a zombie row that LOOKS like it's importing but has nothing behind it. Mark those as
+  // failed on boot so the UI tells the truth; the original files were kept in pending_conversions from
+  // the moment the upload started, so Retry still works.
+  const [stuck] = await db().query("SELECT id FROM books WHERE status='processing'");
+  for (const row of stuck) {
+    await db().query(
+      "UPDATE books SET status='failed', error=?, progress_current=NULL, progress_total=NULL, progress_label=NULL WHERE id=?",
+      ['Conversion was interrupted when the server restarted. Click Retry to try again.', row.id]
+    );
+  }
+
   const app = express();
   app.use(morgan('dev')); // concise colored request log: METHOD /url status time
   app.use(cors({ origin: config.clientOrigin, credentials: true }));

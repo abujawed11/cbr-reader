@@ -33,11 +33,12 @@ async function listFilesRecursive(dir) {
 }
 
 // Extract archive contents into workDir and return image entries in reading order.
-async function extractImages(uploads, workDir) {
+async function extractImages(uploads, workDir, { signal, onProgress } = {}) {
   await fs.mkdir(workDir, { recursive: true });
   const images = []; // { path, name } - name is used for sorting
 
   for (let i = 0; i < uploads.length; i++) {
+    if (signal?.aborted) throw new DOMException('Conversion cancelled', 'AbortError');
     const file = uploads[i];
     const type = await detectType(file);
 
@@ -56,7 +57,11 @@ async function extractImages(uploads, workDir) {
       images.push({ path: file.path, name: file.originalname });
     } else if (type === 'pdf') {
       const dest = path.join(workDir, `pdf-${i}`);
-      for (const p of await renderPdfToImages(file.path, dest)) {
+      const files = await renderPdfToImages(file.path, dest, {
+        signal,
+        onProgress: (n, total) => onProgress?.('rendering', n, total),
+      });
+      for (const p of files) {
         images.push({ path: p, name: path.relative(dest, p) });
       }
     } else {
@@ -70,17 +75,21 @@ async function extractImages(uploads, workDir) {
 }
 
 // Convert uploads into numbered WebP pages + cover in storage/books/<id>/.
-async function convertToBook(bookId, uploads) {
+// `signal` lets the caller abort partway through; `onProgress(label, current, total)` reports page-level
+// progress for both phases ('rendering' a PDF's pages, then 'converting' every extracted image to WebP).
+async function convertToBook(bookId, uploads, { signal, onProgress } = {}) {
   const bookDir = path.join(config.storageDir, 'books', String(bookId));
   const workDir = path.join(config.storageDir, 'tmp', String(bookId));
   await fs.mkdir(bookDir, { recursive: true });
 
   try {
-    const images = await extractImages(uploads, workDir);
+    const images = await extractImages(uploads, workDir, { signal, onProgress });
     if (!images.length) throw new Error('No images found in the uploaded file(s)');
+    if (signal?.aborted) throw new DOMException('Conversion cancelled', 'AbortError');
 
     const pages = [];
     for (let i = 0; i < images.length; i++) {
+      if (signal?.aborted) throw new DOMException('Conversion cancelled', 'AbortError');
       const number = i + 1;
       const info = await sharp(images[i].path)
         .rotate()
@@ -88,6 +97,7 @@ async function convertToBook(bookId, uploads) {
         .webp({ quality: 82 })
         .toFile(path.join(bookDir, `${number}.webp`));
       pages.push({ number, width: info.width, height: info.height });
+      onProgress?.('converting', number, images.length);
     }
 
     await sharp(images[0].path)

@@ -14,8 +14,9 @@ const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
 const withSlash = (p) => p.replace(/\\/g, '/') + '/';
 
 // Render every page of a PDF to numbered PNG files in destDir (one page in memory at a time).
-// Returns the file paths in page order.
-async function renderPdfToImages(pdfPath, destDir) {
+// Returns the file paths in page order. `signal` lets the caller abort between pages; `onProgress(n, total)`
+// is called after each page finishes rendering.
+async function renderPdfToImages(pdfPath, destDir, { signal, onProgress } = {}) {
   const pdfjs = await loadPdfjs();
   await fs.mkdir(destDir, { recursive: true });
 
@@ -35,6 +36,7 @@ async function renderPdfToImages(pdfPath, destDir) {
 
     const files = [];
     for (let n = 1; n <= doc.numPages; n++) {
+      if (signal?.aborted) throw new DOMException('Conversion cancelled', 'AbortError');
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
       const scale = Math.min(Math.max(TARGET_WIDTH / base.width, 1), 4);
@@ -51,6 +53,7 @@ async function renderPdfToImages(pdfPath, destDir) {
       await fs.writeFile(file, await canvas.encode('png'));
       files.push(file);
       page.cleanup();
+      onProgress?.(n, doc.numPages);
     }
     return files;
   } finally {

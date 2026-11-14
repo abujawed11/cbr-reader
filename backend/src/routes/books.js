@@ -8,6 +8,7 @@ const { db } = require('../db');
 const { convertToBook } = require('../converter');
 const { canReadPage, viewerContext, hasFullAccess } = require('../access');
 const { requireAdmin, requireAuth } = require('../auth');
+const { startJob, endJob, cancelJob } = require('../jobs');
 
 const router = express.Router();
 const uploadDir = path.join(config.storageDir, 'uploads');
@@ -42,6 +43,8 @@ const bookView = (b, ctx) => ({
   readablePages: hasFullAccess(b, ctx) ? b.page_count : Math.min(b.free_pages, b.page_count),
   status: b.status,
   error: b.error,
+  // How far an in-progress conversion has gotten, e.g. { label: 'rendering', current: 340, total: 600 }.
+  progress: b.status === 'processing' && b.progress_total ? { label: b.progress_label, current: b.progress_current, total: b.progress_total } : null,
   coverUrl: coverUrl(b),
   // Where this signed-in viewer last left off reading, and when; null for guests or never-opened books.
   lastPage: ctx.progress?.get(b.id)?.page ?? null,
@@ -55,27 +58,52 @@ async function getBook(id) {
 }
 
 // Shared by the initial upload and by retry: runs the conversion, then cleans up afterwards either way.
-// On failure the original files are kept (via pending_conversions) instead of deleted, so retry has something
-// to retry with; on success they're no longer needed by anyone.
+// On failure/cancellation the original files are kept (via pending_conversions) instead of deleted, so retry
+// has something to retry with; on success they're no longer needed by anyone.
 function runConversion(bookId, files) {
-  convertToBook(bookId, files)
+  const controller = startJob(bookId);
+
+  // Throttled so a 600-page PDF doesn't fire ~1200 UPDATEs; the very last page of each phase always flushes
+  // so the UI never gets stuck showing a stale "599 / 600".
+  let lastWrite = 0;
+  const onProgress = (label, current, total) => {
+    const now = Date.now();
+    if (current !== total && now - lastWrite < 300) return;
+    lastWrite = now;
+    db()
+      .query('UPDATE books SET progress_current=?, progress_total=?, progress_label=? WHERE id=?', [current, total, label, bookId])
+      .catch((err) => console.error(`Progress update failed for book ${bookId}:`, err));
+  };
+
+  convertToBook(bookId, files, { signal: controller.signal, onProgress })
     .then(async (pages) => {
       const values = pages.map((p) => [bookId, p.number, p.width, p.height]);
       await db().query('DELETE FROM pages WHERE book_id = ?', [bookId]); // in case this is a retry
       await db().query('INSERT INTO pages (book_id, number, width, height) VALUES ?', [values]);
-      await db().query("UPDATE books SET status='ready', page_count=?, error=NULL WHERE id=?", [pages.length, bookId]);
+      await db().query(
+        "UPDATE books SET status='ready', page_count=?, error=NULL, progress_current=NULL, progress_total=NULL, progress_label=NULL WHERE id=?",
+        [pages.length, bookId]
+      );
       await db().query('DELETE FROM pending_conversions WHERE book_id = ?', [bookId]);
       await Promise.all(files.map((f) => fs.promises.rm(f.path, { force: true })));
     })
     .catch(async (err) => {
-      console.error(`Conversion failed for book ${bookId}:`, err);
-      await db().query("UPDATE books SET status='failed', error=? WHERE id=?", [String(err.message), bookId]);
+      const cancelled = err.name === 'AbortError';
+      if (cancelled) console.log(`Conversion cancelled for book ${bookId}`);
+      else console.error(`Conversion failed for book ${bookId}:`, err);
+      await db().query(
+        'UPDATE books SET status=?, error=?, progress_current=NULL, progress_total=NULL, progress_label=NULL WHERE id=?',
+        [cancelled ? 'cancelled' : 'failed', cancelled ? null : String(err.message), bookId]
+      );
+      // Already inserted up front (see the upload route) so retry/resume works even after a server restart;
+      // this upsert just keeps it in sync in case the file list changed (e.g. a retry with different files).
       const kept = files.map((f) => ({ path: f.path, originalname: f.originalname }));
       await db().query(
         'INSERT INTO pending_conversions (book_id, files) VALUES (?, ?) ON DUPLICATE KEY UPDATE files = VALUES(files)',
         [bookId, JSON.stringify(kept)]
       );
-    });
+    })
+    .finally(() => endJob(bookId));
 }
 
 // List library
@@ -113,21 +141,44 @@ router.post('/', requireAdmin, upload.array('files', 2000), async (req, res) => 
   const bookId = result.insertId;
   res.status(202).json(bookView(await getBook(bookId), await viewerContext(req.user)));
 
+  // Keep the originals around from the start (not just once conversion fails), so that if the server
+  // crashes or is restarted mid-conversion, the stuck "processing" row it leaves behind can still be
+  // retried instead of forcing a re-upload.
+  const kept = files.map((f) => ({ path: f.path, originalname: f.originalname }));
+  await db().query('INSERT INTO pending_conversions (book_id, files) VALUES (?, ?)', [bookId, JSON.stringify(kept)]);
+
   // Background conversion (swap for a real job queue later)
   runConversion(bookId, files);
 });
 
-// Re-run conversion for a book that failed, using the originals kept around for exactly this purpose.
-// Admin only; 409 if there's nothing kept to retry with (e.g. it was already deleted, or never failed).
+// Stop a conversion that's currently running. Admin only; 409 if nothing is actually running for this book
+// (e.g. it just finished, or the server was restarted and the in-memory job registry no longer knows about it).
+router.post('/:id/cancel', requireAdmin, async (req, res) => {
+  const book = await getBook(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  if (book.status !== 'processing') return res.status(400).json({ error: 'This book is not currently being converted' });
+  if (!cancelJob(book.id)) {
+    return res.status(409).json({ error: 'No running conversion was found for this book. It may have just finished - refresh to check.' });
+  }
+  res.status(202).json(bookView(await getBook(book.id), await viewerContext(req.user)));
+});
+
+// Re-run conversion for a book that failed or was cancelled, using the originals kept around for exactly
+// this purpose. Admin only; 409 if there's nothing kept to retry with (e.g. it was already deleted).
 router.post('/:id/retry', requireAdmin, async (req, res) => {
   const book = await getBook(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  if (book.status !== 'failed') return res.status(400).json({ error: 'This book has not failed conversion' });
+  if (book.status !== 'failed' && book.status !== 'cancelled') {
+    return res.status(400).json({ error: 'This book has not failed or been cancelled' });
+  }
 
   const [rows] = await db().query('SELECT files FROM pending_conversions WHERE book_id = ?', [book.id]);
   if (!rows.length) return res.status(409).json({ error: 'The original files for this book are no longer available. Delete it and upload again.' });
 
-  await db().query("UPDATE books SET status='processing', error=NULL WHERE id=?", [book.id]);
+  await db().query(
+    "UPDATE books SET status='processing', error=NULL, progress_current=NULL, progress_total=NULL, progress_label=NULL WHERE id=?",
+    [book.id]
+  );
   res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
   // mysql2 auto-parses JSON columns, but tolerate either shape in case that ever changes.
   const kept = typeof rows[0].files === 'string' ? JSON.parse(rows[0].files) : rows[0].files;
