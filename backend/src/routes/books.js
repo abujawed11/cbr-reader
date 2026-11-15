@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const config = require('../config');
+
+// libvips' operation cache keeps source files open after processing. On Windows an open handle blocks
+// rename/unlink (EBUSY), which breaks page reorder/delete right after thumbnails are generated.
+sharp.cache(false);
 const { db } = require('../db');
 const { convertToBook } = require('../converter');
 const { canReadPage, viewerContext, hasFullAccess } = require('../access');
@@ -189,7 +193,8 @@ router.put('/:id/cover/page/:n', requireAdmin, async (req, res) => {
   const dir = path.join(config.storageDir, 'books', String(book.id));
   try {
     // The page file is already rotated/converted; just resize it down to cover size.
-    await sharp(path.join(dir, `${n}.webp`)).resize({ width: 400, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(dir, 'cover.webp'));
+    // Read into a buffer so sharp never holds a handle on the page file (see sharp.cache note above).
+    await sharp(await fs.promises.readFile(path.join(dir, `${n}.webp`))).resize({ width: 400, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(dir, 'cover.webp'));
   } catch {
     return res.status(400).json({ error: 'Could not use that page as the cover.' });
   }
@@ -256,7 +261,7 @@ router.get('/:id/pages/:n/thumb', async (req, res) => {
   const thumb = path.join(dir, 'thumbs', `${ok.n}.webp`);
   if (!fs.existsSync(thumb)) {
     fs.mkdirSync(path.dirname(thumb), { recursive: true });
-    await sharp(path.join(dir, `${ok.n}.webp`)).resize({ width: 240 }).webp({ quality: 70 }).toFile(thumb);
+    await sharp(await fs.promises.readFile(path.join(dir, `${ok.n}.webp`))).resize({ width: 240 }).webp({ quality: 70 }).toFile(thumb);
   }
   res.set('Cache-Control', 'private, no-cache'); // see the comment on the full-page route above
   res.sendFile(thumb);
@@ -286,6 +291,19 @@ router.put('/:id/pages/:n/replace', requireAdmin, upload.single('file'), async (
   res.json(bookView(await getBook(book.id), await viewerContext(req.user)));
 });
 
+// On Windows a file can be briefly locked (antivirus, search indexer, an in-flight sendFile stream), making
+// rename fail with EBUSY/EPERM. Retry a few times with a short backoff before giving up.
+function renameWithRetry(from, to, attempts = 6) {
+  for (let i = 0; ; i++) {
+    try {
+      return fs.renameSync(from, to);
+    } catch (err) {
+      if (i >= attempts - 1 || !['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (i + 1));
+    }
+  }
+}
+
 // Reorder every page in one go. Admin only. `order` is a permutation of 1..pageCount: the OLD page numbers,
 // listed in their new order (e.g. [3,1,2] means the old page 3 is now page 1, old page 1 is now page 2, ...).
 router.put('/:id/pages/reorder', requireAdmin, async (req, res) => {
@@ -308,7 +326,7 @@ router.put('/:id/pages/reorder', requireAdmin, async (req, res) => {
   // Every rename actually performed, in order, so a failure partway through can be undone exactly.
   const done = [];
   const renameTracked = (from, to) => {
-    fs.renameSync(from, to);
+    renameWithRetry(from, to);
     done.push({ from, to });
   };
   const rollback = () => {
@@ -373,9 +391,9 @@ router.delete('/:id/pages/:n', requireAdmin, async (req, res) => {
   await db().query('DELETE FROM pages WHERE book_id = ? AND number = ?', [book.id, n]);
 
   for (let k = n + 1; k <= book.page_count; k++) {
-    fs.renameSync(path.join(dir, `${k}.webp`), path.join(dir, `${k - 1}.webp`));
+    renameWithRetry(path.join(dir, `${k}.webp`), path.join(dir, `${k - 1}.webp`));
     const thumb = path.join(dir, 'thumbs', `${k}.webp`);
-    if (fs.existsSync(thumb)) fs.renameSync(thumb, path.join(dir, 'thumbs', `${k - 1}.webp`));
+    if (fs.existsSync(thumb)) renameWithRetry(thumb, path.join(dir, 'thumbs', `${k - 1}.webp`));
     await db().query('UPDATE pages SET number = ? WHERE book_id = ? AND number = ?', [k - 1, book.id, k]);
   }
 

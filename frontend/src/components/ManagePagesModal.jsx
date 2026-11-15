@@ -60,7 +60,7 @@ export default function ManagePagesModal({ book, onClose, onSaved }) {
   const [order, setOrder] = useState(() => Array.from({ length: book.pageCount }, (_, i) => i + 1))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [cacheBust, setCacheBust] = useState(0) // bumped after a replace so the browser re-fetches that thumbnail
+  const [cacheBust, setCacheBust] = useState(0) // bumped after replace/reorder/delete so the browser re-fetches thumbnails
 
   const dirty = order.some((n, i) => n !== i + 1)
 
@@ -78,6 +78,9 @@ export default function ManagePagesModal({ book, onClose, onSaved }) {
       const updated = await reorderPages(book.id, order)
       onSaved(updated)
       setOrder(Array.from({ length: updated.pageCount }, (_, i) => i + 1))
+      // Page N's URL now points at a different image; without a new URL the browser keeps showing the
+      // image it already loaded for it, making the saved order look like it snapped back.
+      setCacheBust((v) => v + 1)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -95,6 +98,7 @@ export default function ManagePagesModal({ book, onClose, onSaved }) {
       const updated = await deletePage(book.id, n)
       onSaved(updated)
       setOrder(Array.from({ length: updated.pageCount }, (_, i) => i + 1))
+      setCacheBust((v) => v + 1) // pages after n were renumbered, same stale-image issue as reorder
     } catch (err) {
       setError(err.message)
     } finally {
