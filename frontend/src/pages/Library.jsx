@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { deleteBook, listBooks, retryBook } from '../api'
+import { cancelBook, deleteBook, listBooks, retryBook } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import BookCard from '../components/BookCard'
 import ContinueReadingRow from '../components/ContinueReadingRow'
@@ -28,6 +28,7 @@ export default function Library() {
   const [editingBook, setEditingBook] = useState(null) // null = closed, else the book being edited
   const [managingPagesBook, setManagingPagesBook] = useState(null) // null = closed, else the book being managed
   const [retryingId, setRetryingId] = useState(null)
+  const [cancellingId, setCancellingId] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
 
@@ -49,7 +50,7 @@ export default function Library() {
   const hasProcessing = books?.some((b) => b.status === 'processing')
   useEffect(() => {
     if (!hasProcessing) return
-    const timer = setInterval(refresh, 2000)
+    const timer = setInterval(refresh, 1000) // frequent enough that the page-progress counter feels live
     return () => clearInterval(timer)
   }, [hasProcessing, refresh])
 
@@ -113,6 +114,17 @@ export default function Library() {
       setError(err.message)
     } finally {
       setRetryingId(null)
+    }
+  }
+
+  const handleCancel = async (book) => {
+    setCancellingId(book.id)
+    try {
+      handleBookSaved(await cancelBook(book.id))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -251,6 +263,8 @@ export default function Library() {
                 onManagePages={isAdmin ? setManagingPagesBook : undefined}
                 onRetry={isAdmin ? handleRetry : undefined}
                 retrying={retryingId === book.id}
+                onCancel={isAdmin ? handleCancel : undefined}
+                cancelling={cancellingId === book.id}
               />
             ))}
           </div>

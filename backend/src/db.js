@@ -21,10 +21,34 @@ async function initDb() {
       price_cents INT UNSIGNED NOT NULL DEFAULT 0,
       free_pages INT UNSIGNED NOT NULL DEFAULT ${config.defaultFreePages},
       page_count INT UNSIGNED NOT NULL DEFAULT 0,
-      status ENUM('processing','ready','failed') NOT NULL DEFAULT 'processing',
+      status ENUM('processing','ready','failed','cancelled') NOT NULL DEFAULT 'processing',
       error TEXT NULL,
+      progress_current INT UNSIGNED NULL,
+      progress_total INT UNSIGNED NULL,
+      progress_label VARCHAR(32) NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
+
+  // Migration: status gained 'cancelled' (conversions can now be cancelled from the UI, not just fail).
+  const [statusCol] = await pool.query(
+    "SELECT COLUMN_TYPE FROM information_schema.columns WHERE table_schema = ? AND table_name = 'books' AND column_name = 'status'",
+    [database]
+  );
+  if (statusCol.length && !/cancelled/i.test(statusCol[0].COLUMN_TYPE)) {
+    await pool.query("ALTER TABLE books MODIFY status ENUM('processing','ready','failed','cancelled') NOT NULL DEFAULT 'processing'");
+  }
+
+  // Migration: books gained live conversion progress (current/total page, and which phase: rendering a PDF's
+  // pages vs. converting extracted images to WebP).
+  const [progressCols] = await pool.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = 'books' AND column_name = 'progress_current'",
+    [database]
+  );
+  if (!progressCols.length) {
+    await pool.query(
+      'ALTER TABLE books ADD COLUMN progress_current INT UNSIGNED NULL, ADD COLUMN progress_total INT UNSIGNED NULL, ADD COLUMN progress_label VARCHAR(32) NULL'
+    );
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

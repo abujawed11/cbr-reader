@@ -6,7 +6,9 @@ import { BookIcon, EditIcon, GridIcon, HeartIcon, LockIcon, TrashIcon } from './
 
 import { formatPrice } from '../lib/format'
 
-export default function BookCard({ book, onDelete, onEdit, onManagePages, onRetry, retrying, onFavoriteChange }) {
+const PROGRESS_LABEL = { rendering: 'Rendering pages', converting: 'Converting pages' }
+
+export default function BookCard({ book, onDelete, onEdit, onManagePages, onRetry, retrying, onCancel, cancelling, onFavoriteChange }) {
   const { user } = useAuth()
   const ready = book.status === 'ready'
   const free = book.priceCents === 0
@@ -45,14 +47,40 @@ export default function BookCard({ book, onDelete, onEdit, onManagePages, onRetr
       {book.status === 'processing' && (
         <>
           <span className="h-7 w-7 animate-spin rounded-full border-2 border-ink-600 border-t-accent-400" />
-          <span>Converting pages…</span>
+          {book.progress ? (
+            <>
+              <span>
+                {PROGRESS_LABEL[book.progress.label] || 'Converting pages'}… {book.progress.current} / {book.progress.total}
+              </span>
+              <div className="h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-ink-700">
+                <div
+                  className="h-full rounded-full bg-accent-500 transition-[width]"
+                  style={{ width: `${Math.round((book.progress.current / book.progress.total) * 100)}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <span>Converting pages…</span>
+          )}
+          {onCancel && (
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                onCancel(book)
+              }}
+              disabled={cancelling}
+              className="mt-1 rounded-full bg-ink-700 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-red-600 hover:text-white disabled:opacity-60"
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel'}
+            </button>
+          )}
         </>
       )}
-      {book.status === 'failed' && (
+      {(book.status === 'failed' || book.status === 'cancelled') && (
         <>
           <BookIcon className="h-7 w-7 text-red-400" />
-          <span className="text-red-300">Conversion failed</span>
-          <span className="line-clamp-3 text-xs text-slate-500">{book.error}</span>
+          <span className="text-red-300">{book.status === 'cancelled' ? 'Conversion cancelled' : 'Conversion failed'}</span>
+          {book.error && <span className="line-clamp-3 text-xs text-slate-500">{book.error}</span>}
           {onRetry && (
             <button
               onClick={(e) => {

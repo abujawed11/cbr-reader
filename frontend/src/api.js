@@ -49,6 +49,7 @@ export const uploadCover = (id, file) => {
 export const setCoverFromPage = (id, n) => request(`/api/books/${id}/cover/page/${n}`, { method: 'PUT' })
 
 export const retryBook = (id) => request(`/api/books/${id}/retry`, { method: 'POST' })
+export const cancelBook = (id) => request(`/api/books/${id}/cancel`, { method: 'POST' })
 
 export const deletePage = (id, n) => request(`/api/books/${id}/pages/${n}`, { method: 'DELETE' })
 
